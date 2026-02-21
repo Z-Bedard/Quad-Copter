@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "SparkFun_BMI270_Arduino_Library.h"
 #include <Wire.h>
+#include <Bluepad32.h>
 
 // IMU Signal Pins
 constexpr uint8_t IMU_data = 21;
@@ -18,7 +19,7 @@ const int PWM_RES_BITS = 16;    // 0–65535 duty
 // Limits
 constexpr int MIN_US = 1000;
 constexpr int MAX_US = 2000;
-constexpr int BASE_US = 1400;
+constexpr int IDLE_US = 1400;
 
 // Initial Values for pitch and roll
 constexpr float KP_ROLL  = 50.0f;
@@ -68,6 +69,82 @@ LevelOut levelFromAccel(float ax, float ay, float az, int base_us, float Kp_roll
   return {roll, pitch};
 }
 
+// RC Setup
+static ControllerPtr gControllers[BP32_MAX_GAMEPADS] = { nullptr };
+static ControllerPtr gCtl = nullptr;
+
+struct RcCmd {
+  int throttle_us;   // 1000..2000
+  bool armed;
+  bool failsafe;
+};
+
+static RcCmd gRc = { 1400, false, true };
+
+static inline int throttleUsFromTrigger(int t) { // 0..1023 -> 1000..2000
+  if (t < 0) t = 0;
+  if (t > 1023) t = 1023;
+  return 1000 + (t * 1000) / 1023;
+}
+
+void onConnectedController(ControllerPtr ctl) {
+  for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
+    if (gControllers[i] == nullptr) {
+      gControllers[i] = ctl;
+      if (!gCtl) gCtl = ctl;
+      Serial.printf("Controller connected (slot %d): %s\n", i, ctl->getModelName().c_str());
+      return;
+    }
+  }
+  Serial.println("Controller connected but no empty slot");
+}
+
+void onDisconnectedController(ControllerPtr ctl) {
+  for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
+    if (gControllers[i] == ctl) {
+      gControllers[i] = nullptr;
+      if (gCtl == ctl) gCtl = nullptr;
+      Serial.printf("Controller disconnected (slot %d)\n", i);
+      return;
+    }
+  }
+}
+
+static inline void rcInit() {
+  BP32.setup(&onConnectedController, &onDisconnectedController);
+  BP32.enableVirtualDevice(false);
+  // BP32.forgetBluetoothKeys();  // only when you need to clear pairings
+}
+
+static inline void rcUpdate() {
+  BP32.update();
+
+  // default failsafe if no controller
+  if (!gCtl || !gCtl->isConnected()) {
+    gRc.failsafe = true;
+    gRc.armed = false;
+    gRc.throttle_us = 1400;
+    return;
+  }
+
+  if (!gCtl->hasData()) return;
+
+  gRc.failsafe = false;
+
+  // throttle from R2 trigger
+  gRc.throttle_us = throttleUsFromTrigger(gCtl->throttle());
+
+  // simple arming (PS4 mappings you used earlier):
+  // Cross (X) disarms, Circle arms (only if throttle low)
+  uint16_t btn = gCtl->buttons();
+  if (btn & 0x0001) {            // Cross
+    gRc.armed = false;
+  }
+  if (btn & 0x0002) {            // Circle
+    if (gRc.throttle_us <= 1050) gRc.armed = true;
+  }
+}
+
 // Convert raw seconds to usable duty cycle
 static inline uint32_t usToDuty(uint32_t us) {
   const uint32_t period_us = 1000000UL / PWM_FREQ; // 20000
@@ -83,12 +160,21 @@ void setThrottleUs(Motor m, uint16_t us) {
   ledcWrite((uint8_t)m, usToDuty(us));
 }
 
+// For shut off
+static inline void writeAllMotorsUs(int us) {
+  setThrottleUs(FR, us);
+  setThrottleUs(RL, us);
+  setThrottleUs(RR, us);
+  setThrottleUs(FL, us);
+}
+
 uint8_t i2cAddress = BMI2_I2C_PRIM_ADDR; // 0x68
 BMI270 imu; // Declare a BMI270 Datatype so we can use the BMI lib
 
 void setup() {
   Serial.begin(115200);
 
+  rcInit();
   Wire.begin(IMU_data, IMU_clk);
   Wire.setClock(400000); // 400 kHz
 
@@ -123,52 +209,38 @@ void setup() {
 }
 
 void loop() {
-  int cmd_us[4];
+  rcUpdate();
+
+  if (gRc.failsafe || !gRc.armed) {
+    writeAllMotorsUs(1000);
+    delay(20);
+    return;
+  }
+
   imu.getSensorData();
 
+  int cmd_us[4];
+  int base_us = gRc.throttle_us;   // replaces BASE_US
+  if (base_us < IDLE_US) base_us = IDLE_US;
+
   LevelOut ang = levelFromAccel(imu.data.accelX, imu.data.accelY, imu.data.accelZ,
-                              BASE_US, KP_ROLL, KP_PITCH, cmd_us);
+                              base_us, KP_ROLL, KP_PITCH, cmd_us);
 
-
-  // setThrottleUs(FR, 1400);
-  // setThrottleUs(RL, 1400);
-  // setThrottleUs(RR, 1400);
-  // setThrottleUs(FL, 1400);
   // clamp + apply
   for (int m = 0; m < 4; m++) {
     if (cmd_us[m] < MIN_US) cmd_us[m] = MIN_US;
     if (cmd_us[m] > MAX_US) cmd_us[m] = MAX_US;
     setThrottleUs((Motor)m, cmd_us[m]);
   }
-  // Print acceleration data
-  // Serial.print("Acceleration in g's");
-  // Serial.print("\t");
-  // Serial.print("X: ");
-  // Serial.print(imu.data.accelX, 3);
-  // Serial.print("\t");
-  // Serial.print("Y: ");
-  // Serial.print(imu.data.accelY, 3);
-  // Serial.print("\t");
-  // Serial.print("Z: ");
-  // Serial.print(imu.data.accelZ, 3);
 
   // Serial.print("\t");
   Serial.printf("roll=%.3f pitch=%.3f | FR %d FL %d RR %d RL %d\n",
               ang.roll_rad, ang.pitch_rad,
               cmd_us[FR], cmd_us[FL], cmd_us[RR], cmd_us[RL]);
 
-  // // Print rotation data
-  // Serial.print("Rotation in deg/sec");
-  // Serial.print("\t");
-  // Serial.print("X: ");
-  // Serial.print(imu.data.gyroX, 3);
-  // Serial.print("\t");
-  // Serial.print("Y: ");
-  // Serial.print(imu.data.gyroY, 3);
-  // Serial.print("\t");
-  // Serial.print("Z: ");
-  // Serial.println(imu.data.gyroZ, 3);
+  // Serial printout of current state struct
+  Serial.printf("failsafe=%d armed=%d throttle_us=%d\n",
+              (int)gRc.failsafe, (int)gRc.armed, gRc.throttle_us);
 
-  // Print 50x per second
   delay(20);
 }
