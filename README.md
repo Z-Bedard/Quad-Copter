@@ -64,17 +64,6 @@ Brushless Motors
 
 ---
 
-## 🛠️ Current Features
-
-- IMU bring-up over I2C  
-- Real-time accelerometer roll/pitch calculation  
-- P-controller stabilization (roll & pitch)  
-- X-quad motor mixing  
-- ESC PWM output (1000–2000 µs)  
-- Basic arming sequence  
-
----
-
 ## 🔄 Flight Stack Development Roadmap
 
 ### Phase 1 – Sensor Bring-Up
@@ -99,42 +88,7 @@ Brushless Motors
 
 ---
 
-## 🧪 Testing Procedure
-
-1. Verify IMU axes via Serial Monitor  
-2. Confirm ESC arming tones  
-3. Run without propellers  
-4. Tilt frame and observe motor compensation  
-5. Tune Kp gains  
-6. Validate loop stability  
-
----
-
-## ⚠️ Safety Notes
-
-- Always remove propellers during testing  
-- Use a current-limited power supply when possible  
-- Verify ESC calibration before flight  
-- Ensure correct motor rotation directions  
-
----
-
-## 🧩 Why This Project Matters
-
-This project demonstrates:
-
-- Embedded systems design  
-- Hardware/software integration  
-- Real-time control implementation  
-- Sensor fusion fundamentals  
-- Low-level motor control  
-- Debugging unstable electromechanical systems  
-
-It is intentionally built **without PX4, Betaflight, or Ardupilot** to gain a deep understanding of flight control fundamentals.
-
----
-
-## 🎯 Future Enhancements
+## 🎯 Future Enhancements (Proposed)
 
 - Yaw control integration  
 - Gyro-based rate mode  
