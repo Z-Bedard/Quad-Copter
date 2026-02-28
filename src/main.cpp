@@ -18,12 +18,18 @@ const int PWM_RES_BITS = 16;    // 0–65535 duty
 
 // Limits
 constexpr int MIN_US = 1000;
+constexpr int MIN_DECENT = 1400;
 constexpr int MAX_US = 2000;
-constexpr int IDLE_US = 1400;
+constexpr int IDLE_US = 1600;
+
+constexpr float YAW_GAIN_US = 150.0f;
+constexpr int STICK_DEADBAND = 30;
 
 // Initial Values for pitch and roll
 constexpr float KP_ROLL  = 50.0f;
 constexpr float KP_PITCH = 50.0f;
+
+static bool gJustArmed = false;
 
 // Initial Speed
 volatile int motor_us[4] = {1500, 1500, 1500, 1500};
@@ -42,7 +48,7 @@ struct LevelOut {
 };
 
 // Take the Pitch and Roll calculations and determine speeds for the motors
-LevelOut levelFromAccel(float ax, float ay, float az, int base_us, float Kp_roll, float Kp_pitch, int out_us[4]) {
+LevelOut levelFromAccel(float ax, float ay, float az, int base_us, float Kp_roll, float Kp_pitch, float yaw_norm, float yaw_gain_us, int out_us[4]) {
   float roll, pitch;
   accelToRollPitch(ax, ay, az, roll, pitch);
 
@@ -53,12 +59,13 @@ LevelOut levelFromAccel(float ax, float ay, float az, int base_us, float Kp_roll
   // controller outputs are in "microseconds" worth of correction
   float rollCmd  = Kp_roll  * roll_err;   // us
   float pitchCmd = Kp_pitch * pitch_err;  // us
+  float yawCmd = yaw_norm * yaw_gain_us;  // us
 
   // mixer (X quad, no yaw)
-  float fr = base_us + pitchCmd - rollCmd;
-  float fl = base_us + pitchCmd + rollCmd;
-  float rr = base_us - pitchCmd - rollCmd;
-  float rl = base_us - pitchCmd + rollCmd;
+  float fr = base_us + pitchCmd - rollCmd - yawCmd;
+  float fl = base_us + pitchCmd + rollCmd + yawCmd;
+  float rr = base_us - pitchCmd - rollCmd + yawCmd;
+  float rl = base_us - pitchCmd + rollCmd - yawCmd;
 
   // clamp and write to array
   out_us[FR] = (int)fr;
@@ -75,11 +82,12 @@ static ControllerPtr gCtl = nullptr;
 
 struct RcCmd {
   int throttle_us;   // 1000..2000
+  float yaw;
   bool armed;
   bool failsafe;
 };
 
-static RcCmd gRc = { 1400, false, true };
+static RcCmd gRc = { 1400, 0.0f, false, true };
 
 static inline int throttleUsFromTrigger(int t) { // 0..1023 -> 1000..2000
   if (t < 0) t = 0;
@@ -116,6 +124,25 @@ static inline void rcInit() {
   // BP32.forgetBluetoothKeys();  // only when you need to clear pairings
 }
 
+static inline int applyDeadband(int v, int db) {
+  if (v > -db && v < db) return 0;
+  return v;
+}
+
+static inline float stickNorm(int v) {
+  if (v < -512) v = -512;
+  if (v >  511) v =  511;
+  return (float)v / 512.0f;   // ~[-1, +1)
+}
+
+static inline int throttleUsFromLeftY(int ly) {
+  ly = applyDeadband(ly, STICK_DEADBAND);
+  float y = stickNorm(ly);               // -1..+1
+  float t = (y + 1.0f) * 0.5f;           // 0..1
+  int us = MIN_US + (int)(t * (MAX_US - MIN_US));
+  return us;
+}
+
 static inline void rcUpdate() {
   BP32.update();
 
@@ -124,6 +151,7 @@ static inline void rcUpdate() {
     gRc.failsafe = true;
     gRc.armed = false;
     gRc.throttle_us = 1400;
+    gRc.yaw = 0.0f;
     return;
   }
 
@@ -131,18 +159,27 @@ static inline void rcUpdate() {
 
   gRc.failsafe = false;
 
-  // throttle from R2 trigger
-  gRc.throttle_us = throttleUsFromTrigger(gCtl->throttle());
+  int lx = applyDeadband(gCtl->axisX(), STICK_DEADBAND);
+  int ly = applyDeadband(-gCtl->axisY(), STICK_DEADBAND);
+
+  gRc.throttle_us = throttleUsFromLeftY(ly);
+  gRc.yaw = stickNorm(lx);  // -1..+1
 
   // simple arming (PS4 mappings you used earlier):
   // Cross (X) disarms, Circle arms (only if throttle low)
   uint16_t btn = gCtl->buttons();
+
   if (btn & 0x0001) {            // Cross
     gRc.armed = false;
+    gJustArmed = false;
   }
   if (btn & 0x0002) {            // Circle
-    if (gRc.throttle_us <= 1050) gRc.armed = true;
+      if (!gRc.armed) gJustArmed = true;
+    gRc.armed = true;
   }
+
+  Serial.printf("btn=0x%04X lx=%d ly=%d thr=%d yaw=%.2f armed=%d\n",
+          btn, lx, ly, gRc.throttle_us, gRc.yaw, (int)gRc.armed);
 }
 
 // Convert raw seconds to usable duty cycle
@@ -217,14 +254,19 @@ void loop() {
     return;
   }
 
+  if(gJustArmed){
+    writeAllMotorsUs(IDLE_US);
+    gJustArmed = false;
+  }
+
   imu.getSensorData();
 
   int cmd_us[4];
   int base_us = gRc.throttle_us;   // replaces BASE_US
-  if (base_us < IDLE_US) base_us = IDLE_US;
+  if (base_us < MIN_DECENT) base_us = MIN_DECENT;
 
   LevelOut ang = levelFromAccel(imu.data.accelX, imu.data.accelY, imu.data.accelZ,
-                              base_us, KP_ROLL, KP_PITCH, cmd_us);
+                              base_us, KP_ROLL, KP_PITCH, gRc.yaw, YAW_GAIN_US, cmd_us);
 
   // clamp + apply
   for (int m = 0; m < 4; m++) {
