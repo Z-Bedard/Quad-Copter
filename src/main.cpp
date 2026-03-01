@@ -22,6 +22,9 @@ constexpr int MIN_DECENT = 1400;
 constexpr int MAX_US = 2000;
 constexpr int IDLE_US = 1600;
 
+constexpr int MAX_ROLL_DEG = 25;
+constexpr int MAX_PITCH_DEG = 25;
+
 constexpr float YAW_GAIN_US = 150.0f;
 constexpr int STICK_DEADBAND = 30;
 
@@ -48,13 +51,22 @@ struct LevelOut {
 };
 
 // Take the Pitch and Roll calculations and determine speeds for the motors
-LevelOut levelFromAccel(float ax, float ay, float az, int base_us, float Kp_roll, float Kp_pitch, float yaw_norm, float yaw_gain_us, int out_us[4]) {
+LevelOut levelFromAccel(float ax, float ay, float az,
+                        int base_us,
+                        float Kp_roll, float Kp_pitch,
+                        float roll_target_deg, float pitch_target_deg,
+                        float yaw_norm, float yaw_gain_us,
+                        int out_us[4]) {
   float roll, pitch;
   accelToRollPitch(ax, ay, az, roll, pitch);
 
+  // Convert target degrees to radians
+  float roll_target  = roll_target_deg  * (M_PI / 180.0f);
+  float pitch_target = pitch_target_deg * (M_PI / 180.0f);
+
   // target is level: roll = 0, pitch = 0
-  float roll_err  = 0.0f - roll;
-  float pitch_err = 0.0f - pitch;
+  float roll_err  = roll_target - roll;
+  float pitch_err = pitch_target - pitch;
 
   // controller outputs are in "microseconds" worth of correction
   float rollCmd  = Kp_roll  * roll_err;   // us
@@ -83,11 +95,13 @@ static ControllerPtr gCtl = nullptr;
 struct RcCmd {
   int throttle_us;   // 1000..2000
   float yaw;
+  float roll_target_deg;
+  float pitch_target_deg;
   bool armed;
   bool failsafe;
 };
 
-static RcCmd gRc = { 1400, 0.0f, false, true };
+static RcCmd gRc = { 1400, 0.0f, 0.0f, 0.0f, false, true };
 
 static inline int throttleUsFromTrigger(int t) { // 0..1023 -> 1000..2000
   if (t < 0) t = 0;
@@ -143,6 +157,12 @@ static inline int throttleUsFromLeftY(int ly) {
   return us;
 }
 
+static inline float stickToTargetDeg(int raw, float max_deg) {
+  raw = applyDeadband(raw, STICK_DEADBAND);
+  float n = stickNorm(raw);           // -1..+1
+  return n * max_deg;                 // degrees
+}
+
 static inline void rcUpdate() {
   BP32.update();
 
@@ -159,12 +179,19 @@ static inline void rcUpdate() {
 
   gRc.failsafe = false;
 
+  // Left Stick deadband application
   int lx = applyDeadband(gCtl->axisX(), STICK_DEADBAND);
   int ly = applyDeadband(-gCtl->axisY(), STICK_DEADBAND);
+
+  // Right Stick deadband application
+  int rx = applyDeadband(gCtl->axisRX(), STICK_DEADBAND);
+  int ry = applyDeadband(gCtl->axisRY(), STICK_DEADBAND);
 
   gRc.throttle_us = throttleUsFromLeftY(ly);
   gRc.yaw = stickNorm(lx);  // -1..+1
 
+  gRc.roll_target_deg  = stickToTargetDeg(rx, MAX_ROLL_DEG);
+  gRc.pitch_target_deg = stickToTargetDeg(ry, MAX_PITCH_DEG);
   // simple arming (PS4 mappings you used earlier):
   // Cross (X) disarms, Circle arms (only if throttle low)
   uint16_t btn = gCtl->buttons();
@@ -178,8 +205,8 @@ static inline void rcUpdate() {
     gRc.armed = true;
   }
 
-  Serial.printf("btn=0x%04X lx=%d ly=%d thr=%d yaw=%.2f armed=%d\n",
-          btn, lx, ly, gRc.throttle_us, gRc.yaw, (int)gRc.armed);
+  // Serial.printf("btn=0x%04X lx=%d ly=%d thr=%d yaw=%.2f armed=%d\n",
+  //         btn, lx, ly, gRc.throttle_us, gRc.yaw, (int)gRc.armed);
 }
 
 // Convert raw seconds to usable duty cycle
@@ -266,7 +293,10 @@ void loop() {
   if (base_us < MIN_DECENT) base_us = MIN_DECENT;
 
   LevelOut ang = levelFromAccel(imu.data.accelX, imu.data.accelY, imu.data.accelZ,
-                              base_us, KP_ROLL, KP_PITCH, gRc.yaw, YAW_GAIN_US, cmd_us);
+                                base_us,
+                                KP_ROLL, KP_PITCH,
+                                gRc.roll_target_deg, gRc.pitch_target_deg,
+                                gRc.yaw, YAW_GAIN_US, cmd_us);
 
   // clamp + apply
   for (int m = 0; m < 4; m++) {
@@ -281,8 +311,8 @@ void loop() {
               cmd_us[FR], cmd_us[FL], cmd_us[RR], cmd_us[RL]);
 
   // Serial printout of current state struct
-  Serial.printf("failsafe=%d armed=%d throttle_us=%d\n",
-              (int)gRc.failsafe, (int)gRc.armed, gRc.throttle_us);
+  // Serial.printf("failsafe=%d armed=%d throttle_us=%d\n",
+  //             (int)gRc.failsafe, (int)gRc.armed, gRc.throttle_us);
 
   delay(20);
 }
