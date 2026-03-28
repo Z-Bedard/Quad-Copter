@@ -18,6 +18,7 @@ const int PWM_RES_BITS = 16;    // 0–65535 duty
 
 // Limits
 constexpr int MIN_US = 1000;
+constexpr int MIN_US_IN_FLIGHT = 1300;
 constexpr int MIN_DECENT = 1400;
 constexpr int MAX_US = 2000;
 constexpr int IDLE_US = 1600;
@@ -29,13 +30,13 @@ constexpr float YAW_GAIN_US = 150.0f;
 constexpr int STICK_DEADBAND = 30;
 
 // Initial Values for pitch and roll
-constexpr float KP_ROLL  = 50.0f;
-constexpr float KP_PITCH = 50.0f;
+constexpr float KP_ROLL  = 900.0f;
+constexpr float KP_PITCH = 900.0f;
 
 static bool gJustArmed = false;
 
 // Initial Speed
-volatile int motor_us[4] = {1500, 1500, 1500, 1500};
+volatile int motor_us[4] = {1600, 1600, 1600, 1600};
 
 // Calculate the Roll and Pitch of the drone given IMU Accel data ONLY (Not Flight Ready)
 static inline void accelToRollPitch(float ax, float ay, float az, float &roll, float &pitch) {
@@ -246,7 +247,6 @@ void setup() {
 
   while(imu.beginI2C(i2cAddress) != BMI2_OK){
     Serial.println("IMU not detected, check wiring");
-    delay(1000);
   }
 
   Serial.println("IMU Detected");
@@ -266,10 +266,8 @@ void setup() {
     setThrottleUs(RL, 1000);
     setThrottleUs(RR, 1000);
     setThrottleUs(FL, 1000);
-    delay(20);
   }
 
-  delay(3000);
 }
 
 void loop() {
@@ -277,7 +275,6 @@ void loop() {
 
   if (gRc.failsafe || !gRc.armed) {
     writeAllMotorsUs(1000);
-    delay(20);
     return;
   }
 
@@ -300,7 +297,7 @@ void loop() {
 
   // clamp + apply
   for (int m = 0; m < 4; m++) {
-    if (cmd_us[m] < MIN_US) cmd_us[m] = MIN_US;
+    if (cmd_us[m] < MIN_US_IN_FLIGHT) cmd_us[m] = MIN_US_IN_FLIGHT;
     if (cmd_us[m] > MAX_US) cmd_us[m] = MAX_US;
     setThrottleUs((Motor)m, cmd_us[m]);
   }
@@ -313,6 +310,4 @@ void loop() {
   // Serial printout of current state struct
   // Serial.printf("failsafe=%d armed=%d throttle_us=%d\n",
   //             (int)gRc.failsafe, (int)gRc.armed, gRc.throttle_us);
-
-  delay(20);
 }
