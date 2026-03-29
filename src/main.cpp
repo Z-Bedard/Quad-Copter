@@ -23,25 +23,27 @@ constexpr int MIN_US = 1000;
 constexpr int MIN_US_IN_FLIGHT = 1400;
 constexpr int MAX_US = 2000;
 constexpr int IDLE_US = 1500;
+constexpr int HOVER_US = 1590;
 
-constexpr int MAX_ROLL_DEG  = 25;
-constexpr int MAX_PITCH_DEG = 25;
+constexpr int MAX_ROLL_DEG  = 35;
+constexpr int MAX_PITCH_DEG = 35;
 
-constexpr float YAW_GAIN_US = 150.0f;
+constexpr float YAW_GAIN_US = 220.0f;
 constexpr int STICK_DEADBAND = 30;
 
 // Angle-hold gains
-constexpr float KP_ROLL  = 100.0f;
-constexpr float KP_PITCH = 100.0f;
+constexpr float KP_ROLL  = 110.0f;
+constexpr float KP_PITCH = 110.0f;
 
 // Small integral term to cancel steady hover bias
-constexpr float KI_ROLL  = 12.0f;
-constexpr float KI_PITCH = 12.0f;
+constexpr float KI_ROLL  = 18.0f;
+constexpr float KI_PITCH = 18.0f;
 constexpr float ITERM_MAX_US = 120.0f;
 
 // Gyro damping gains (deg/s -> us)
 constexpr float KD_ROLL_RATE  = 1.8f;
 constexpr float KD_PITCH_RATE = 1.8f;
+constexpr float KD_YAW_RATE   = 7.0f;
 
 // Complementary filter settings
 constexpr float COMPLEMENTARY_ALPHA = 0.98f;
@@ -53,9 +55,9 @@ constexpr float DT_MAX_S = 0.02f;
 constexpr int GYRO_CAL_SAMPLES = 500;
 constexpr int GYRO_CAL_DELAY_MS = 2;
 
-// Hover trim offsets in degrees. Adjust after hover testing if needed.
+// Hover trim offsets in degrees.
 constexpr float ROLL_TRIM_DEG = 0.0f;
-constexpr float PITCH_TRIM_DEG = -0.5f;
+constexpr float PITCH_TRIM_DEG = 0.0f;
 
 // Shared state protection
 portMUX_TYPE rcMux = portMUX_INITIALIZER_UNLOCKED;
@@ -96,6 +98,7 @@ struct LevelOut {
   float pitch_rad;
   float roll_rate_dps;
   float pitch_rate_dps;
+  float yaw_rate_dps;
 };
 
 struct AttitudeEstimate {
@@ -161,12 +164,12 @@ static AttitudeEstimate updateAttitudeEstimate(float ax, float ay, float az,
 }
 
 LevelOut levelFromSensors(float ax, float ay, float az,
-                          float gx_dps, float gy_dps,
+                          float gx_dps, float gy_dps, float gz_dps,
                           float dt_s,
                           int base_us,
                           float Kp_roll, float Kp_pitch,
                           float Ki_roll, float Ki_pitch,
-                          float Kd_roll_rate, float Kd_pitch_rate,
+                          float Kd_roll_rate, float Kd_pitch_rate, float Kd_yaw_rate,
                           float roll_target_deg, float pitch_target_deg,
                           float yaw_norm, float yaw_gain_us,
                           int out_us[4]) {
@@ -195,7 +198,7 @@ LevelOut levelFromSensors(float ax, float ay, float az,
 
   float rollCmd  = (-Kp_roll * roll_err) + gRollIntegralUs - (Kd_roll_rate * gx_dps);
   float pitchCmd = (Kp_pitch * pitch_err) + gPitchIntegralUs - (Kd_pitch_rate * gy_dps);
-  float yawCmd   = yaw_norm * yaw_gain_us;
+  float yawCmd   = (yaw_norm * yaw_gain_us) - (Kd_yaw_rate * gz_dps);
 
   // X quad mixer
   float fr = base_us + pitchCmd - rollCmd - yawCmd;
@@ -208,7 +211,7 @@ LevelOut levelFromSensors(float ax, float ay, float az,
   out_us[RR] = (int)rr;
   out_us[RL] = (int)rl;
 
-  return {attitude.roll_rad, attitude.pitch_rad, gx_dps, gy_dps};
+  return {attitude.roll_rad, attitude.pitch_rad, gx_dps, gy_dps, gz_dps};
 }
 
 void onConnectedController(ControllerPtr ctl) {
@@ -253,9 +256,12 @@ static inline float stickNorm(int v) {
 static inline int throttleUsFromLeftY(int ly) {
   ly = applyDeadband(ly, STICK_DEADBAND);
   float y = stickNorm(ly);
-  float t = (y + 1.0f) * 0.5f;
-  int us = MIN_US + (int)(t * (MAX_US - MIN_US));
-  return us;
+
+  if (y >= 0.0f) {
+    return HOVER_US + (int)(y * (MAX_US - HOVER_US));
+  }
+
+  return HOVER_US + (int)(y * (HOVER_US - MIN_US));
 }
 
 static inline float stickToTargetDeg(int raw, float max_deg) {
@@ -320,7 +326,7 @@ static inline void rcUpdate() {
 
   newRc.throttle_us      = throttleUsFromLeftY(ly);
   newRc.yaw              = stickNorm(lx);
-  newRc.roll_target_deg  = stickToTargetDeg(rx, MAX_ROLL_DEG);
+  newRc.roll_target_deg  = -stickToTargetDeg(rx, MAX_ROLL_DEG);
   newRc.pitch_target_deg = stickToTargetDeg(ry, MAX_PITCH_DEG);
 
   uint16_t btn = gCtl->buttons();
@@ -395,6 +401,7 @@ void controlTask(void* pvParameters) {
 
     float gyroX_dps = -(imu.data.gyroX - gGyroBias.x_dps);
     float gyroY_dps = imu.data.gyroY - gGyroBias.y_dps;
+    float gyroZ_dps = imu.data.gyroZ - gGyroBias.z_dps;
 
     int cmd_us[4];
 
@@ -404,12 +411,12 @@ void controlTask(void* pvParameters) {
 
     LevelOut ang = levelFromSensors(
       imu.data.accelX, imu.data.accelY, imu.data.accelZ,
-      gyroX_dps, gyroY_dps,
+      gyroX_dps, gyroY_dps, gyroZ_dps,
       dt_s,
       base_us,
       KP_ROLL, KP_PITCH,
       KI_ROLL, KI_PITCH,
-      KD_ROLL_RATE, KD_PITCH_RATE,
+      KD_ROLL_RATE, KD_PITCH_RATE, KD_YAW_RATE,
       rcLocal.roll_target_deg, rcLocal.pitch_target_deg,
       rcLocal.yaw, YAW_GAIN_US,
       cmd_us
@@ -431,9 +438,9 @@ void controlTask(void* pvParameters) {
     printCounter++;
     if (printCounter >= 25) {
       printCounter = 0;
-      Serial.printf("roll=%.3f pitch=%.3f gx=%.2f gy=%.2f | FR %d FL %d RR %d RL %d\n",
+      Serial.printf("roll=%.3f pitch=%.3f gx=%.2f gy=%.2f gz=%.2f | FR %d FL %d RR %d RL %d\n",
                     gDbgRoll, gDbgPitch,
-                    ang.roll_rate_dps, ang.pitch_rate_dps,
+                    ang.roll_rate_dps, ang.pitch_rate_dps, ang.yaw_rate_dps,
                     gDbgCmd[FR], gDbgCmd[FL], gDbgCmd[RR], gDbgCmd[RL]);
     }
 
