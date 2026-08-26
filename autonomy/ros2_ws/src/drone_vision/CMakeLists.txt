@@ -12,6 +12,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 pkg_check_modules(
   LIBCAMERA
@@ -40,6 +41,7 @@ ament_target_dependencies(
 ament_target_dependencies(
   camera_node
   rclcpp
+  sensor_msgs
 )
 
 target_link_libraries(

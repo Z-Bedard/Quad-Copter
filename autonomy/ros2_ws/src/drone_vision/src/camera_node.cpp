@@ -1,8 +1,10 @@
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/image.hpp"
 
 #include <libcamera/libcamera.h>
 #include <libcamera/framebuffer_allocator.h>
@@ -11,6 +13,8 @@ class CameraNode : public rclcpp::Node {
     public: 
         CameraNode() : Node("camera_node") {
             RCLCPP_INFO (this->get_logger(), "Starting camera node");
+
+            image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>("/camera/image_raw", 10);
 
             camera_manager_ = std::make_unique<libcamera::CameraManager>();
             int ret = camera_manager_->start();
@@ -70,6 +74,10 @@ class CameraNode : public rclcpp::Node {
             }
 
             RCLCPP_INFO(this->get_logger(), "Configured stream: %ux%u", stream_config.size.width, stream_config.size.height);
+
+            image_width_ = stream_config.size.width;
+            image_height_ = stream_config.size.height;
+            image_stride_ = stream_config.stride;
 
             ret = camera_->configure(config_.get());
             if(ret) {
@@ -147,15 +155,57 @@ class CameraNode : public rclcpp::Node {
 
         std::vector<std::unique_ptr<libcamera::Request>> requests_;
 
+        rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher_;
+
         bool camera_acquired = false;
         bool camera_started = true;
+
+        unsigned int image_width_ = 0;
+        unsigned int image_height_ = 0;
+        unsigned int image_stride_ = 0;
 
         void request_complete(libcamera::Request * request) {
             if(request->status() == libcamera::Request::RequestCancelled){
                 return;
             }
 
-            RCLCPP_INFO(this->get_logger(), "Frame Received");
+            auto buffer_it = request->buffers().find(stream_);
+            if(buffer_it == request->buffers().end()){
+                RCLCPP_ERROR(this->get_logger(), "No frame buffer found for stream");
+                return;
+            }
+
+            libcamera::FrameBuffer *buffer = buffer_it->second;
+            const libcamera::FrameBuffer::Plane &plane = buffer->planes()[0];
+
+            void *mapped = map(nullptr, plane.lenght, PROT_READ, MAP_SHARED, plane.fd.get(), plane.offset);
+            if(mapped == MAP_FAILED) {
+                RCLCPP(this->get_logger(), "Failed to map frame buffer");
+                request->reuse(libcamera::Request::ReuseBuffers);
+                camera_->queueRequest(request);
+                return;
+            }
+
+            sensor_msgs::msg::Image msg;
+
+            msg.header.stamp = this->now();
+            msg.header.frame_id = "camera_frame";
+
+            msg.height = image_height_;
+            msg.width = image_width_;
+
+            msg.encoding = "bgra8";
+
+            msg.is_bigendian = false;
+
+            msg.step = image_stride_;
+
+            msg.data.resize(image_stride_ * image_height_);
+            std::memcpy(msg.data.data(), mapped, msg.data.size());
+
+            munmap(mapped, plane.length);
+
+            image_publisher_->publish(msg);
 
             request->reuse(libcamera::Request::ReuseBuffers);
             int ret = camera_->queueRequest(request);
