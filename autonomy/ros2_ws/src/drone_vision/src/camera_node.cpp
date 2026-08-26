@@ -161,7 +161,7 @@ class CameraNode : public rclcpp::Node {
             int ret = camera_->queueRequest(request);
 
             if(ret < 0) {
-                RCLCPP_ERROR(this->get_loggeR(), "Failed to requeue request");
+                RCLCPP_ERROR(this->get_logger(), "Failed to requeue request");
             }
         }
 };
