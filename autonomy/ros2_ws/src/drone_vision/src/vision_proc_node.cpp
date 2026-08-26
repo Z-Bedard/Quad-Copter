@@ -6,14 +6,19 @@
 #include "cv_bridge/cv_bridge.hpp"
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/features2d.hpp>
 
 class VisionProc : public rclcpp::Node {
     public:
         VisionProc() : Node("vision_proc_node") {
             image_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/camera/image_raw", 10, std::bind(&VisionProc::image_callback, this, std::placeholders::_1));
+            
+            orb_ = cv::ORB::create(500);
         }
 
     private:
+        cv::Ptr<cv::ORB> orb_;    
+
         void image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
             cv_bridge::CvImagePtr cv_ptr;
 
@@ -26,7 +31,12 @@ class VisionProc : public rclcpp::Node {
             }
 
             cv::Mat frame = cv_ptr->image;
-            RCLCPP_INFO(this->get_logger(), "Received frame: %d x %d", frame.cols, frame.rows);
+
+            std::vector<cv::KeyPoint> keypoints;
+            cv::Mat descriptors;
+
+            orb_->detectAndCompute(frame, cv::noArray(), keypoints, descriptors);
+            RCLCPP_INFO(this->get_logger(), "Detected %zu ORB features", keypoints.size());
         }
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
 };
