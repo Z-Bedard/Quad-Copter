@@ -8,6 +8,7 @@
 
 #include <libcamera/libcamera.h>
 #include <libcamera/framebuffer_allocator.h>
+#include <sys/mman.h>
 
 class CameraNode : public rclcpp::Node {
     public: 
@@ -136,8 +137,12 @@ class CameraNode : public rclcpp::Node {
 
         ~CameraNode() {
             if(camera_){
-                camera_->stop();
-                camera_->release();
+                if(camera_started) {
+                    camera_->stop();    
+                }
+                if(camera_acquired) {
+                    camera_->release();
+                }
             }
             if(camera_manager_) {
                 camera_manager_->stop();
@@ -178,9 +183,9 @@ class CameraNode : public rclcpp::Node {
             libcamera::FrameBuffer *buffer = buffer_it->second;
             const libcamera::FrameBuffer::Plane &plane = buffer->planes()[0];
 
-            void *mapped = map(nullptr, plane.lenght, PROT_READ, MAP_SHARED, plane.fd.get(), plane.offset);
+            void *mapped = mmap(nullptr, plane.length, PROT_READ, MAP_SHARED, plane.fd.get(), plane.offset);
             if(mapped == MAP_FAILED) {
-                RCLCPP(this->get_logger(), "Failed to map frame buffer");
+                RCLCPP_ERROR(this->get_logger(), "Failed to map frame buffer");
                 request->reuse(libcamera::Request::ReuseBuffers);
                 camera_->queueRequest(request);
                 return;
