@@ -38,11 +38,7 @@ class CameraNode : public rclcpp::Node {
             camera_ = cameras[0];
             RCLCPP_INFO(this->get_logger(), "Selected camera: %s", camera_->id().c_str());
         
-            RCLCPP_INFO(this->get_logger(), "Attemping to acquire camera");
-
             ret = camera_->acquire();
-
-            RCLCPP_INFO(this->get_logger(), "camera_->acquire() returned: %d", ret);
 
             if(ret) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to acquire camera");
