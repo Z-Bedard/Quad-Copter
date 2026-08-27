@@ -22,7 +22,7 @@ class VisionProc : public rclcpp::Node {
     private:
         cv::Ptr<cv::ORB> orb_;   
         cv::Ptr<cv::BFMatcher> matcher_;
-        
+
         std::vector<cv::KeyPoint> prev_keypoints_;
         cv::Mat prev_descriptors_;
 
@@ -59,7 +59,15 @@ class VisionProc : public rclcpp::Node {
                     
                     size_t keep_count = matches.size() / 2;
                     std::vector<cv::DMatch> good_matches(matches.begin(), matches.begin() + keep_count);
-                    RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu | Good Matches: %zu", keypoints.size(), matches.size(), good_matches.size());
+                    
+                    std::vector<cv::Point2f> prev_points;
+                    std::vector<cv::Point2f> curr_points;
+
+                    for(const auto &match : good_matches) {
+                        prev_points.push_back(prev_keypoints_[match.queryIdx].pt);
+                        curr_points.push_back(keypoints[match.trainIdx].pt)
+                    }
+                    RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu | Good Matches: %zu | Point pairs: %zu", keypoints.size(), matches.size(), good_matches.size(), prev_points.size());
                 }
             }
             prev_keypoints_ = keypoints;
