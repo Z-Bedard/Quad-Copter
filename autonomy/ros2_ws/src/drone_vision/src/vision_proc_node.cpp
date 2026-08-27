@@ -44,7 +44,7 @@ class VisionProc : public rclcpp::Node {
             cv::Mat descriptors;
 
             orb_->detectAndCompute(frame, cv::noArray(), keypoints, descriptors);
-            if(have_prev_famee_ && !prev_descriptors_.empty() && !descriptors.empty()) {
+            if(have_prev_frame_ && !prev_descriptors_.empty() && !descriptors.empty()) {
                 std::vector<cv::DMatch> matches;
                 matcher_->match(prev_descriptors_, descriptors, matches);
                 RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu", keypoints.size(), matches.size());
