@@ -65,7 +65,7 @@ class VisionProc : public rclcpp::Node {
 
                     for(const auto &match : good_matches) {
                         prev_points.push_back(prev_keypoints_[match.queryIdx].pt);
-                        curr_points.push_back(keypoints[match.trainIdx].pt)
+                        curr_points.push_back(keypoints[match.trainIdx].pt);
                     }
                     RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu | Good Matches: %zu | Point pairs: %zu", keypoints.size(), matches.size(), good_matches.size(), prev_points.size());
                 }
