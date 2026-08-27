@@ -28,17 +28,18 @@ class CameraCalibration : public rclcpp::Node {
     private:
         const int board_width_ = 7;
         const int board_height_ = 7;
-
         const float square_size_ = 0.025f;
-
         const size_t required_images_ = 25;
 
+        cv::Mat camera_matrix_;
+        cv::Mat distortion_coefficients_;
         cv::Size board_size_{
             board_width_,
             board_height_
         };
         
         bool calibrated_ = false;
+        bool saved_test_image_ = false;
         rclcpp::Time last_capture_time_;
 
         std::vector<cv::Point3f> object_template_;
@@ -49,7 +50,33 @@ class CameraCalibration : public rclcpp::Node {
 
         void image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
             if(calibrated_) {
-                return; 
+                if(!saved_test_image_) {
+                    cv_bridge::CvImagePtr cv_ptr;
+
+                    try {
+                        cv_ptr = cv_bridge::toCvCopy(msg, "bgr8");
+                    }
+                    catch (const cv_bridge::Exception &e){
+                        RCLCPP_ERROR(this->get_logger(), "cv_bridge error: %s", e.what());
+                        return;
+                    }
+
+                    cv::Mat frame = cv_ptr->image;
+                    cv::Mat undistorted_frame;
+
+                    cv::undistort(
+                        frame,
+                        undistorted_frame,
+                        camera_matrix_,
+                        distortion_coefficients_
+                    );
+
+                    cv::imwrite("/tmp/raw_frame.jpg", frame);
+                    cv::imwrite("/tmp/undistorted_frame.jpg", undistorted_frame);
+                    RCLCPP_INFO(this->get_logger(), "Saved test images");
+                    saved_test_image_ = true;                    
+                } 
+                return;
             }
 
             cv_bridge::CvImagePtr cv_ptr;
@@ -101,19 +128,16 @@ class CameraCalibration : public rclcpp::Node {
         }
 
         void calibrate() {
-            cv::Mat camera_matrix;
-            cv::Mat distortion_coefficients;
-
             std::vector<cv::Mat> rotation_vectors;
             std::vector<cv::Mat> translation_vectors;
 
-            double rms = cv::calibrateCamera(object_points_, image_points_, image_size_, camera_matrix, distortion_coefficients, rotation_vectors, translation_vectors);
+            double rms = cv::calibrateCamera(object_points_, image_points_, image_size_, camera_matrix_, distortion_coefficients_, rotation_vectors, translation_vectors);
         
             RCLCPP_INFO(this->get_logger(), "Calibration complete");
             RCLCPP_INFO(this->get_logger(), "RMS reprojection error: %.6f", rms);
 
-            std::cout << "Camera matrix:\n" << camera_matrix << std::endl;
-            std::cout << "Distortion coefficients:\n" << distortion_coefficients << std::endl;
+            std::cout << "Camera matrix:\n" << camera_matrix_ << std::endl;
+            std::cout << "Distortion coefficients:\n" << distortion_coefficients_ << std::endl;
             calibrated_ = true;
 
             // THESE CALIBRATION SETTINGS ARE NOT SAVED
