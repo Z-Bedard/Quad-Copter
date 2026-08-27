@@ -14,7 +14,7 @@ class CameraCalibration : public rclcpp::Node {
     public: 
         CameraCalibration() : Node("camera_calibration") {
             image_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/camera/image_raw", 10, std::bind(&CameraCalibration::image_callback, this, std::placeholders::_1));
-            RCLCPP_INFO(this->get_logger(), "Camera Calibraiton started");
+            RCLCPP_INFO(this->get_logger(), "Camera Calibration started");
             
             last_capture_time_ = this->now();
 
@@ -48,7 +48,7 @@ class CameraCalibration : public rclcpp::Node {
         cv::Size image_size_;
 
         void image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
-            if(calibrate) {
+            if(calibrated_) {
                 return; 
             }
 
@@ -93,7 +93,7 @@ class CameraCalibration : public rclcpp::Node {
             image_points_.push_back(corners);
             object_points_.push_back(object_template_);
             last_capture_time_ = this->now();
-            RCLCPP_INFO(this->get_logger(), "Calibration sample accepted: %zu / %zu", image_points_.size(), required_images);
+            RCLCPP_INFO(this->get_logger(), "Calibration sample accepted: %zu / %zu", image_points_.size(), required_images_);
 
             if(!calibrated_ && image_points_.size() >= required_images_) {
                 calibrate();
