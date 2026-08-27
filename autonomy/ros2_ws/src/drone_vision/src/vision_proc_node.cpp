@@ -13,7 +13,7 @@ class VisionProc : public rclcpp::Node {
         VisionProc() : Node("vision_proc_node") {
             image_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/camera/image_raw", 10, std::bind(&VisionProc::image_callback, this, std::placeholders::_1));
             
-            mathcer_ = cv::BFMatcher::create(cv::NORM_HAMMING, true);
+            matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, true);
 
             orb_ = cv::ORB::create(1000);
         }
@@ -22,7 +22,7 @@ class VisionProc : public rclcpp::Node {
         cv::Ptr<cv::ORB> orb_;   
         cv::Ptr<cv::BFMatcher> matcher_;
         
-        std::vector<cv::Keypoint> prev_keypoints_;
+        std::vector<cv::KeyPoint> prev_keypoints_;
         cv::Mat prev_descriptors_;
 
         bool have_prev_frame_ = false;
