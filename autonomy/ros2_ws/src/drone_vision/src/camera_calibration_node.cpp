@@ -29,7 +29,7 @@ class CameraCalibration : public rclcpp::Node {
         const int board_width_ = 7;
         const int board_height_ = 7;
 
-        const float square_size_ = 0.046f;
+        const float square_size_ = 0.025f;
 
         const size_t required_images_ = 25;
 
