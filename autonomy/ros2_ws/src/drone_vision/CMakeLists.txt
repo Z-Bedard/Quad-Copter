@@ -22,7 +22,7 @@ pkg_check_modules(
 add_executable(camera_sim_node src/camera_sim_node.cpp)
 add_executable(vision_proc_node src/vision_proc_node.cpp)
 add_executable(camera_node src/camera_node.cpp)
-add_executable(camera_calibration src/camera_calibration.cpp)
+add_executable(camera_calibration src/camera_calibration_node.cpp)
 
 ament_target_dependencies(
   camera_sim_node

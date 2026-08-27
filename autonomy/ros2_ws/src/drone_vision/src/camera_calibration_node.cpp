@@ -51,6 +51,7 @@ class CameraCalibration : public rclcpp::Node {
             if(calibrate) {
                 return; 
             }
+
             cv_bridge::CvImagePtr cv_ptr;
             
             try {
@@ -114,6 +115,9 @@ class CameraCalibration : public rclcpp::Node {
             std::cout << "Camera matrix:\n" << camera_matrix << std::endl;
             std::cout << "Distortion coefficients:\n" << distortion_coefficients << std::endl;
             calibrated_ = true;
+
+            // THESE CALIBRATION SETTINGS ARE NOT SAVED
+            // NEED TO BE SAVED IN YAML FILE
         }
 
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
