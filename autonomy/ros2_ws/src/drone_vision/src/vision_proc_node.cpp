@@ -13,7 +13,7 @@ class VisionProc : public rclcpp::Node {
         VisionProc() : Node("vision_proc_node") {
             image_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/camera/image_raw", 10, std::bind(&VisionProc::image_callback, this, std::placeholders::_1));
             
-            orb_ = cv::ORB::create(500);
+            orb_ = cv::ORB::create(1000);
         }
 
     private:
