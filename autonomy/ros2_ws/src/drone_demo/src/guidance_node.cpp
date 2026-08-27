@@ -31,7 +31,7 @@ class GuidanceNode : public rclcpp::Node {
     rclcpp::TimerBase::SharedPtr timer_;
 };
 
-int main(int argc, char * argv[]) {
+int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
 
     rclcpp::spin(std::make_shared<GuidanceNode>());

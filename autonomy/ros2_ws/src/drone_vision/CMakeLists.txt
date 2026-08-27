@@ -12,7 +12,6 @@ find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PkgConfig REQUIRED)
-find_package(sensor_msgs REQUIRED)
 
 pkg_check_modules(
   LIBCAMERA
@@ -23,6 +22,7 @@ pkg_check_modules(
 add_executable(camera_sim_node src/camera_sim_node.cpp)
 add_executable(vision_proc_node src/vision_proc_node.cpp)
 add_executable(camera_node src/camera_node.cpp)
+add_executable(camera_calibration src/camera_calibration.cpp)
 
 ament_target_dependencies(
   camera_sim_node
@@ -42,6 +42,13 @@ ament_target_dependencies(
   camera_node
   rclcpp
   sensor_msgs
+)
+
+ament_target_dependencies(
+  camera_calibration
+  rclcpp
+  sensor_msgs
+  cv_bridge
 )
 
 target_link_libraries(
@@ -59,6 +66,11 @@ target_link_libraries(
   ${LIBCAMERA_LIBRARIES}
 )
 
+target_link_libraries(
+  camera_calibration
+  ${OpenCV_LIBS}
+)
+
 target_include_directories(
   camera_node
   PRIVATE
@@ -66,7 +78,7 @@ target_include_directories(
 )
 
 install(
-  TARGETS camera_sim_node vision_proc_node camera_node
+  TARGETS camera_sim_node vision_proc_node camera_node camera_calibration
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -77,7 +77,7 @@ class VisionProc : public rclcpp::Node {
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
 };
 
-int main (int argc, char * argv[]) {
+int main (int argc, char *argv[]) {
     rclcpp::init(argc, argv);
 
     rclcpp::spin(std::make_shared<VisionProc>());

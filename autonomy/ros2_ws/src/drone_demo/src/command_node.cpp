@@ -18,7 +18,7 @@ class CommandNode : public rclcpp::Node {
     rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr subscription_;
 };
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
 
     rclcpp::spin(std::make_shared<CommandNode>());
