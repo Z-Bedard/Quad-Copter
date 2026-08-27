@@ -13,11 +13,19 @@ class VisionProc : public rclcpp::Node {
         VisionProc() : Node("vision_proc_node") {
             image_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/camera/image_raw", 10, std::bind(&VisionProc::image_callback, this, std::placeholders::_1));
             
+            mathcer_ = cv::BFMatcher::create(cv::NORM_HAMMING, true);
+
             orb_ = cv::ORB::create(1000);
         }
 
     private:
-        cv::Ptr<cv::ORB> orb_;    
+        cv::Ptr<cv::ORB> orb_;   
+        cv::Ptr<cv::BFMatcher> matcher_;
+        
+        std::vector<cv::Keypoint> prev_keypoints_;
+        cv::Mat prev_descriptors_;
+
+        bool have_prev_frame_ = false;
 
         void image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
             cv_bridge::CvImagePtr cv_ptr;
@@ -36,7 +44,15 @@ class VisionProc : public rclcpp::Node {
             cv::Mat descriptors;
 
             orb_->detectAndCompute(frame, cv::noArray(), keypoints, descriptors);
-            RCLCPP_INFO(this->get_logger(), "Detected %zu ORB features", keypoints.size());
+            if(have_prev_fame_ && !prev_descriptors_.empty() && !descriptors.empty()) {
+                std::vector<cv::DMatch> matches;
+                matcher_->match(prev_descriptors_, descriptors, matches);
+                RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu", keypoints.size(), matches.size());
+            }
+
+            prev_keypoints_ = keypoints;
+            prev_descriptors_ = descriptors.clone();
+            have_prev_frame_ = true;
         }
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
 };
