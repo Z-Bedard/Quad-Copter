@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <functional>
 #include <memory>
 
@@ -47,9 +48,20 @@ class VisionProc : public rclcpp::Node {
             if(have_prev_frame_ && !prev_descriptors_.empty() && !descriptors.empty()) {
                 std::vector<cv::DMatch> matches;
                 matcher_->match(prev_descriptors_, descriptors, matches);
-                RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu", keypoints.size(), matches.size());
-            }
 
+                if(matches.size() < 10) {
+                    RCLCPP_WARN(this->get_logger(), "Not enough matches: %zu", matches.size());
+                } else {
+                    std::sort(matches.begin(), matches.end(),
+                        [](const cv::DMatch &a, const cv::DMatch &b) {
+                            return a.distance < b.distance;
+                        });
+                    
+                    size_t keep_count = matches.size() / 2;
+                    std::vector<cv::DMatch> good_matches(matches.begin(), matches.begin() + keep_count);
+                    RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu | Good Matches: %zu", keypoints.size(), matches.size(), good_matches.size());
+                }
+            }
             prev_keypoints_ = keypoints;
             prev_descriptors_ = descriptors.clone();
             have_prev_frame_ = true;
