@@ -113,6 +113,7 @@ class VisionProc : public rclcpp::Node {
                             tracking_failure_count_ = 0;
                             keyframe_keypoints_ = keypoints;
                             keyframe_descriptors_ = descriptors.clone();
+                            global_rotation_cw_ = cv::Mat::eye(3, 3, CV_64F);
                             RCLCPP_WARN(this->get_logger(), "Tracking lost - resetting");
                         } else {
                             RCLCPP_WARN(this->get_logger(), "Tracking lost, Current frame has too few features: %zu", keypoints.size());
@@ -151,6 +152,8 @@ class VisionProc : public rclcpp::Node {
                         keyframe_keypoints_ = keypoints;
                         keyframe_descriptors_ = descriptors.clone();
                         tracking_failure_count_ = 0;
+                        global_rotation_cw_ = cv::Mat::eye(3, 3, CV_64F);
+                        
                         RCLCPP_WARN(this->get_logger(), "Reference keyframe reset");
                     } else {
                         RCLCPP_WARN(this->get_logger(), "Current frame has too few features for reset: %zu", keypoints.size());
