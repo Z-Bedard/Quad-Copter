@@ -94,6 +94,14 @@ class VisionProc : public rclcpp::Node {
                         if(!essential_matrix.empty()) {
                             int inlier_count = cv::countNonZero(inlier_mask);
                             RCLCPP_INFO(this->get_logger(), "RANSAC inliers: %d / %zu", inlier_count, prev_points_undistorted.size());
+                        
+                            cv::Mat rotation;
+                            cv::Mat translation;
+
+                            int pose_inliers = cv::recoverPose(essential_matrix, prev_points_undistorted, curr_points_undistorted, rotation, translation, 1.0, cv::Point2d(0.0, 0.0), inlier_mask);
+                            RCLCPP_INFO(this->get_logger(), "Pose inliers: %d", pose_inliers);
+                            std::cout<< "Rotation:\n" << rotation << std::endl;
+                            std::cout<< "Translation direction:\n" << translation << std::endl;
                         }
                     }
 
