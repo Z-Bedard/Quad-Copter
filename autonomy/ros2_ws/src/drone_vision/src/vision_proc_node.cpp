@@ -23,6 +23,13 @@ class VisionProc : public rclcpp::Node {
         const int MIN_POSE_INLIERS = 15;
         const double MIN_POSE_INLIER_RATIO = 0.5;
         const double MIN_KEYFRAME_DISPLACEMENT_PX = 8.0;
+        const double MAX_KEYFRAME_DISPLACEMENT_PX = 80.0;
+
+        const int MAX_TRACKING_FAILURES = 3;
+        const size_t MIN_GOOD_MATCHES_FOR_TRACKING = 20;
+        const size_t MIN_FEATURES_FOR_KEYFRAME = 100;
+
+        int tracking_failure_count_ = 0;
 
         // Temp Hardcoded calibration values before YAML file with actual calibration values
         cv::Mat camera_matrix_ = (cv::Mat_<double>(3, 3) <<
@@ -89,7 +96,25 @@ class VisionProc : public rclcpp::Node {
                     
                     size_t keep_count = matches.size() / 2;
                     std::vector<cv::DMatch> good_matches(matches.begin(), matches.begin() + keep_count);
-                    
+
+                    if(good_matches.size() < MIN_GOOD_MATCHES_FOR_TRACKING) {
+                        tracking_failure_count_++:
+                        RCLCPP_WARN(this->get_logger(), "Tracking weak: %zu good matches | Failure %d / %d", good_matches.size(), tracking_failure_count_, MAX_TRACKING_FAILURES);
+
+                        if(tracking_failure_count_ >= MAX_TRACKING_FAILURES){
+                            if(keypoints.size() >= MIN_FEATURES_FOR_KEYFRAME){
+                                tracking_failure_count_ = 0;
+                                keyframe_keypoints_ = keypoints;
+                                keyframe_descriptors_ = descriptors.clone();
+                                RCLCPP_WARN(this->get_logger(), "Tracking lost - reseting");
+                            } else {
+                                RCLCPP_WARN(this->get_logger(), "Tracking lost, Current frame has too few features: %zu", keypoints.size());
+                            }
+                        }
+                        return;
+                    }
+                    tracking_failure_count_ = 0;
+
                     std::vector<cv::Point2f> keyframe_points;
                     std::vector<cv::Point2f> curr_points;
 
@@ -111,6 +136,18 @@ class VisionProc : public rclcpp::Node {
                     RCLCPP_INFO(this->get_logger(), "Median displacement from keyframe: %.2f px", median_displacement);
                     if(median_displacement < MIN_KEYFRAME_DISPLACEMENT_PX) {
                         RCLCPP_INFO(this->get_logger(), "Keeping current keyframe");
+                        return;
+                    }
+                    if(median_displacement > MAX_KEYFRAME_DISPLACEMENT_PX) {
+                        RCLCPP_WARN(this->get_logger(), "Keyframe is stale (%.2f px) - resetting", median_displacement);
+                        if(keypoints.size() >= MIN_FEATURES_FOR_KEYFRAME) {
+                            keyframe_keypoints_ = keypoints;
+                            keyframe_descriptors_ = descriptors.clone();
+                            tracking_failure_count_ = 0;
+                            RCLCPP_WARN(this->get_logger(), "Reference keyframe reset");
+                        } else {
+                            RCLCPP_WARN(this->get_logger(), "Current frame has too few features for reset: %zu", keypoints.size());
+                        }
                         return;
                     }
 
