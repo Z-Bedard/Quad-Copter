@@ -52,6 +52,11 @@ class VisionProc : public rclcpp::Node {
         cv::Mat keyframe_descriptors_;
         cv::Mat global_rotation_cw_ = cv::Mat::eye(3, 3, CV_64F);
 
+        cv::Mat rotation_bc_ = (cv::Mat_<double>(3, 3) <<
+            0.0,  0.0,  1.0,
+            -1.0,  0.0,  0.0,
+            0.0, -1.0,  0.0);
+
         bool have_keyframe_ = false;
 
         void image_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
@@ -191,11 +196,15 @@ class VisionProc : public rclcpp::Node {
                             RCLCPP_INFO(this->get_logger(), "Pose accepted");
                             global_rotation_cw_ = rotation * global_rotation_cw_;
                             // std::cout << "Global world -> camera rotation: \n" << global_rotation_cw_ << std::endl;
+                            
                             cv::Mat camera_rotation_world = global_rotation_cw_.t();
+                            cv::Mat rotation_cb = rotation_bc_.t();
+                            cv::Mat body_rotation_world = rotation_bc_ * camera_rotation_world * rotation_cb;
+                            
                             cv::Mat rotation_vector;
-                            cv::Rodrigues(camera_rotation_world, rotation_vector);
+                            cv::Rodrigues(body_rotation_world, rotation_vector);
                             cv::Mat rotation_vector_deg = rotation_vector * (180.0/CV_PI);
-                            std::cout <<"Accumulated rotatioon vector [deg]: \n" << rotation_vector_deg << std::endl;
+                            std::cout <<"Body rotation vector [deg]: \n" << rotation_vector_deg << std::endl;
 
                             // RCLCPP_INFO(this->get_logger(), "Pose inliers: %d", pose_inliers);
                             // std::cout<< "Rotation:\n" << rotation << std::endl;
