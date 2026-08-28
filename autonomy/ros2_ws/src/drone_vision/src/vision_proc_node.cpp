@@ -20,7 +20,7 @@ class VisionProc : public rclcpp::Node {
         }
 
     private:
-        const int MIN_POSE_INLIERS = 15;
+        const int MIN_POSE_INLIERS = 25;
         const double MIN_POSE_INLIER_RATIO = 0.5;
         const double MIN_KEYFRAME_DISPLACEMENT_PX = 8.0;
         const double MAX_KEYFRAME_DISPLACEMENT_PX = 80.0;
