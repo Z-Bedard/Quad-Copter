@@ -98,7 +98,7 @@ class VisionProc : public rclcpp::Node {
                     std::vector<cv::DMatch> good_matches(matches.begin(), matches.begin() + keep_count);
 
                     if(good_matches.size() < MIN_GOOD_MATCHES_FOR_TRACKING) {
-                        tracking_failure_count_++:
+                        tracking_failure_count_++;
                         RCLCPP_WARN(this->get_logger(), "Tracking weak: %zu good matches | Failure %d / %d", good_matches.size(), tracking_failure_count_, MAX_TRACKING_FAILURES);
 
                         if(tracking_failure_count_ >= MAX_TRACKING_FAILURES){
