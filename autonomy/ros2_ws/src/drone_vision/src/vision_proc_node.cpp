@@ -50,6 +50,7 @@ class VisionProc : public rclcpp::Node {
 
         std::vector<cv::KeyPoint> keyframe_keypoints_;
         cv::Mat keyframe_descriptors_;
+        cv::Mat global_rotation_cw_ = cv::Mat::eye(3, 3, CV_64F);
 
         bool have_keyframe_ = false;
 
@@ -139,9 +140,9 @@ class VisionProc : public rclcpp::Node {
                 
                 std::sort(displacements.begin(), displacements.end());
                 double median_displacement = displacements[displacements.size() / 2];
-                RCLCPP_INFO(this->get_logger(), "Median displacement from keyframe: %.2f px", median_displacement);
+                // RCLCPP_INFO(this->get_logger(), "Median displacement from keyframe: %.2f px", median_displacement);
                 if(median_displacement < MIN_KEYFRAME_DISPLACEMENT_PX) {
-                    RCLCPP_INFO(this->get_logger(), "Keeping current keyframe");
+                    // RCLCPP_INFO(this->get_logger(), "Keeping current keyframe");
                     return;
                 }
                 if(median_displacement > MAX_KEYFRAME_DISPLACEMENT_PX) {
@@ -169,7 +170,7 @@ class VisionProc : public rclcpp::Node {
                     cv::Mat essential_matrix = cv::findEssentialMat(keyframe_points_undistorted, curr_points_undistorted, 1.0, cv::Point2d(0.0, 0.0), cv::RANSAC, 0.999, 0.003, inlier_mask);
                     if(!essential_matrix.empty()) {
                         int inlier_count = cv::countNonZero(inlier_mask);
-                        RCLCPP_INFO(this->get_logger(), "RANSAC inliers: %d / %zu", inlier_count, keyframe_points_undistorted.size());
+                        // RCLCPP_INFO(this->get_logger(), "RANSAC inliers: %d / %zu", inlier_count, keyframe_points_undistorted.size());
                         if(inlier_count == 0) {
                             RCLCPP_WARN(this->get_logger(), "RANSAC returned zero inliers");
                             return;
@@ -185,9 +186,17 @@ class VisionProc : public rclcpp::Node {
                         bool pose_valid = pose_inliers >= MIN_POSE_INLIERS && pose_inlier_ratio >= MIN_POSE_INLIER_RATIO;
                         if(pose_valid) {
                             RCLCPP_INFO(this->get_logger(), "Pose accepted");
-                            RCLCPP_INFO(this->get_logger(), "Pose inliers: %d", pose_inliers);
-                            std::cout<< "Rotation:\n" << rotation << std::endl;
-                            std::cout<< "Translation direction:\n" << translation << std::endl;
+                            global_rotation_cw_ = rotation * global_rotation_cw_;
+                            // std::cout << "Global world -> camera rotation: \n" << global_rotation_cw_ << std::endl;
+                            cv::Mat camera_rotation_world = global_rotation_cw_.t();
+                            cv::Mat rotation_vector;
+                            cv::Rodrigues(camera_rotation_world, rotation_vector);
+                            cv::Mat rotation_vector_deg = rotation_vector * (180.0/CV_PI);
+                            std::cout <<"Accumulated rotatioon vector [deg]: \n" << rotation_vector_deg << std::endl;
+
+                            // RCLCPP_INFO(this->get_logger(), "Pose inliers: %d", pose_inliers);
+                            // std::cout<< "Rotation:\n" << rotation << std::endl;
+                            // std::cout<< "Translation direction:\n" << translation << std::endl;
 
                             keyframe_keypoints_ = keypoints;
                             keyframe_descriptors_ = descriptors.clone();
@@ -199,10 +208,10 @@ class VisionProc : public rclcpp::Node {
                     }
                 }
 
-                RCLCPP_INFO(this->get_logger(), "Features: %zu | KNN Candidates: %zu | Good Matches: %zu | Raw pairs: %zu | Undistorted pairs: %zu", keypoints.size(), knn_matches.size(), good_matches.size(), keyframe_points.size(), keyframe_points_undistorted.size());
-                if(!keyframe_points_undistorted.empty()) {
-                    RCLCPP_INFO(this->get_logger(), "Raw prev: (%.2f, %.2f) | Undistorted: (%.4f, %.4f)", keyframe_points[0].x, keyframe_points[0].y, keyframe_points_undistorted[0].x, keyframe_points_undistorted[0].y);
-                }
+                // RCLCPP_INFO(this->get_logger(), "Features: %zu | KNN Candidates: %zu | Good Matches: %zu | Raw pairs: %zu | Undistorted pairs: %zu", keypoints.size(), knn_matches.size(), good_matches.size(), keyframe_points.size(), keyframe_points_undistorted.size());
+                // if(!keyframe_points_undistorted.empty()) {
+                //     RCLCPP_INFO(this->get_logger(), "Raw prev: (%.2f, %.2f) | Undistorted: (%.4f, %.4f)", keyframe_points[0].x, keyframe_points[0].y, keyframe_points_undistorted[0].x, keyframe_points_undistorted[0].y);
+                // }
             }
         }
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
