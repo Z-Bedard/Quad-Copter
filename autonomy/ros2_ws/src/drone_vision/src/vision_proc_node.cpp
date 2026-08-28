@@ -20,6 +20,19 @@ class VisionProc : public rclcpp::Node {
         }
 
     private:
+        // Temp Hardcoded calibration values before YAML file with actual calibration values
+        cv::Mat camera_matrix_ = (cv::Mat_<double>(3, 3) <<
+            336.0698913378847, 0.0, 329.6543631430312,
+            0.0, 336.4258361270623, 206.5706502606883,
+            0.0, 0.0, 1.0);
+
+        cv::Mat distortion_coefficients_ = (cv::Mat_<double>(1, 5) <<
+            -0.4641815694275584,
+            0.4817709594610811,
+            0.01016659010261606,
+            0.004722940452727565,
+            -0.4214890718676393);
+
         cv::Ptr<cv::ORB> orb_;   
         cv::Ptr<cv::BFMatcher> matcher_;
 
@@ -67,7 +80,19 @@ class VisionProc : public rclcpp::Node {
                         prev_points.push_back(prev_keypoints_[match.queryIdx].pt);
                         curr_points.push_back(keypoints[match.trainIdx].pt);
                     }
-                    RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu | Good Matches: %zu | Point pairs: %zu", keypoints.size(), matches.size(), good_matches.size(), prev_points.size());
+                    
+                    std::vector<cv::Point2f> prev_points_undistorted;
+                    std::vector<cv::Point2f> curr_points_undistorted;
+                    
+                    cv::undistortPoints(prev_points, prev_points_undistorted, camera_matrix_, distortion_coefficients_);
+                    cv::undistortPoints(curr_points, curr_points_undistorted, camera_matrix_, distortion_coefficients_);    
+
+                    RCLCPP_INFO(this->get_logger(), "Features: %zu | Matches: %zu | Good Matches: %zu | Raw pairs: %zu | Undistorted pairs: %zu", keypoints.size(), matches.size(), good_matches.size(), prev_points.size(), prev_points_undistorted.size());
+                    if(!prev_points_undistorted.empty()) {
+                        RCLCPP_INFO(this->get_logger(), "Raw prev: (%.2f, %.2f) | Undistorted: (%.4f, %.4f)", prev_points[0].x, prev_points[0].y, prev_points_undistorted[0].x, prev_points_undistorted[0].y);
+                    }
+
+
                 }
             }
             prev_keypoints_ = keypoints;
