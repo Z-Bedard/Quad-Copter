@@ -151,20 +151,20 @@ class VisionProc : public rclcpp::Node {
                     // RCLCPP_INFO(this->get_logger(), "Keeping current keyframe");
                     return;
                 }
-                if(median_displacement > MAX_KEYFRAME_DISPLACEMENT_PX) {
-                    RCLCPP_WARN(this->get_logger(), "Keyframe is stale (%.2f px) - resetting", median_displacement);
-                    if(keypoints.size() >= MIN_FEATURES_FOR_KEYFRAME) {
-                        keyframe_keypoints_ = keypoints;
-                        keyframe_descriptors_ = descriptors.clone();
-                        tracking_failure_count_ = 0;
-                        global_rotation_cw_ = cv::Mat::eye(3, 3, CV_64F);
+                // if(median_displacement > MAX_KEYFRAME_DISPLACEMENT_PX) {
+                //     RCLCPP_WARN(this->get_logger(), "Keyframe is stale (%.2f px) - resetting", median_displacement);
+                //     if(keypoints.size() >= MIN_FEATURES_FOR_KEYFRAME) {
+                //         keyframe_keypoints_ = keypoints;
+                //         keyframe_descriptors_ = descriptors.clone();
+                //         tracking_failure_count_ = 0;
+                //         global_rotation_cw_ = cv::Mat::eye(3, 3, CV_64F);
                         
-                        RCLCPP_WARN(this->get_logger(), "Reference keyframe reset");
-                    } else {
-                        RCLCPP_WARN(this->get_logger(), "Current frame has too few features for reset: %zu", keypoints.size());
-                    }
-                    return;
-                }
+                //         RCLCPP_WARN(this->get_logger(), "Reference keyframe reset");
+                //     } else {
+                //         RCLCPP_WARN(this->get_logger(), "Current frame has too few features for reset: %zu", keypoints.size());
+                //     }
+                //     return;
+                // }
 
                 std::vector<cv::Point2f> keyframe_points_undistorted;
                 std::vector<cv::Point2f> curr_points_undistorted;
