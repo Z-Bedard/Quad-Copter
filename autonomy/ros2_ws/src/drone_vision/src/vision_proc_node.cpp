@@ -64,7 +64,7 @@ class VisionProc : public rclcpp::Node {
             orb_->detectAndCompute(frame, cv::noArray(), keypoints, descriptors);
             if(!have_keyframe_) {
                 if(descriptors.empty()) {
-                    RCLCPP_WARM(this->get_logger(), "Cannot create initial keyframe: no descriptors");
+                    RCLCPP_WARN(this->get_logger(), "Cannot create initial keyframe: no descriptors");
                     return;
                 }
                 keyframe_keypoints_ = keypoints;
