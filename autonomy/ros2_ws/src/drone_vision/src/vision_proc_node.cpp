@@ -191,6 +191,13 @@ class VisionProc : public rclcpp::Node {
                         double pose_inlier_ratio = static_cast<double>(pose_inliers) / static_cast<double>(inlier_count);
                         RCLCPP_INFO(this->get_logger(), "Pose quality: %d / %d = %.1f%%", pose_inliers, inlier_count, pose_inlier_ratio * 100);                            
 
+                        cv::Mat relative_rotation_vector;
+                        cv::Rodrigues(rotation, relative_rotation_vector);
+
+                        double relative_rotation_rad = cv::norm(relative_rotation_vector);
+                        double relative_rotation_deg = relative_rotation_rad * 180.0/CV_PI;
+                        RCLCPP_INFO(this->get_logger(), "Relative rotation: %.2f deg", relative_rotation_deg);
+
                         bool pose_valid = pose_inliers >= MIN_POSE_INLIERS && pose_inlier_ratio >= MIN_POSE_INLIER_RATIO;
                         if(pose_valid) {
                             RCLCPP_INFO(this->get_logger(), "Pose accepted");
