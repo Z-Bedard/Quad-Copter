@@ -232,8 +232,8 @@ class VisionProc : public rclcpp::Node {
                             ray_residuals_deg.push_back(residual_deg);
                         }
 
-                        std::sory(ray_residuals_deg.begin(), ray_residuals_deg.end());
-                        double median_ray_risidual_deg = ray_residuals_deg[ray_residuals_deg.size() / 2];
+                        std::sort(ray_residuals_deg.begin(), ray_residuals_deg.end());
+                        double median_ray_residual_deg = ray_residuals_deg[ray_residuals_deg.size() / 2];
                         RCLCPP_INFO(this->get_logger(), "Ray rotation: %.2f deg | Rays: %d | Median residual: %.2f deg", ray_rotation_deg, ray_inliers, median_ray_residual_deg);
                     }
 
