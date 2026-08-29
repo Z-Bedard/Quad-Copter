@@ -260,11 +260,11 @@ class VisionProc : public rclcpp::Node {
                         cv::SVD final_svd(final_correlation, cv::SVD::FULL_UV);
                         final_ray_rotation = final_svd.u * final_svd.vt;
 
-                        if(cv::determinant(candidate_rotation) < 0.0) {
+                        if(cv::determinant(final_ray_rotation) < 0.0) {
                             cv::Mat correction = cv::Mat::eye( 3, 3, CV_64F);
                             correction.at<double>(2, 2) = -1.0;
 
-                            final_ray_rotation = sample_svd.u * correction * sample_svd.vt;
+                            final_ray_rotation = final_svd.u * correction * final_svd.vt;
                         }
 
                         cv::Mat final_ray_rotation_vector;
