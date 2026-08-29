@@ -400,7 +400,7 @@ class VisionProc : public rclcpp::Node {
             }
         }
 
-        rclcpp::Publisher<geometry_msgs::msg::Quaternion>::SharedPtr orientation_publisher_;
+        rclcpp::Publisher<geometry_msgs::msg::QuaternionStamped>::SharedPtr orientation_publisher_;
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
 };
 
