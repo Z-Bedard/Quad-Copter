@@ -220,8 +220,21 @@ class VisionProc : public rclcpp::Node {
                         cv::Mat ray_rotation_vector;
                         cv::Rodrigues(ray_rotation, ray_rotation_vector);
                         double ray_rotation_deg = cv::norm(ray_rotation_vector) * 180.0 / CV_PI;
-                        RCLCPP_INFO(this->get_logger(), "Ray rotation: %.2f deg | Rays: %d", ray_rotation_deg, ray_inliers);
 
+                        std::vector<double> ray_residuals_deg;
+                        for(size_t i = 0; i < keyframe_rays.size(); ++i) {
+                            cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[i][0], keyframe_rays[i][1], keyframe_rays[i][2]);
+                            cv::Mat predicted_ray = ray_rotation * keyframe_ray;
+                            cv::Vec3d predicted(predicted_ray.at<double>(0, 0), predicted_ray.at<double>(1, 0), predicted_ray.at<double>(2, 0));
+                            double dot = predicted.dot(curr_rays[i]);
+                            dot = std::clamp(dot, -1.0, 1.0);
+                            double residual_deg = std::acos(dot) * 180.0 / CV_PI;
+                            ray_residuals_deg.push_back(residual_deg);
+                        }
+
+                        std::sory(ray_residuals_deg.begin(), ray_residuals_deg.end());
+                        double median_ray_risidual_deg = ray_residuals_deg[ray_residuals_deg.size() / 2];
+                        RCLCPP_INFO(this->get_logger(), "Ray rotation: %.2f deg | Rays: %d | Median residual: %.2f deg", ray_rotation_deg, ray_inliers, median_ray_residual_deg);
                     }
 
                     if(!essential_matrix.empty()) {
