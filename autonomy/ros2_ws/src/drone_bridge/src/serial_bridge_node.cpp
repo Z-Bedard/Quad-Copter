@@ -89,11 +89,11 @@ class SerialBridge : public rclcpp::Node {
                     return;
                 }
 
-                receive_buffer.append(buffer, static_cast<size_t>(bytes_read));
+                receive_buffer_.append(buffer, static_cast<size_t>(bytes_read));
                 size_t newline_position;
 
                 while((newline_position = receive_buffer_.find('\n')) != std::string::npos) {
-                    std::string line = receive_buffeR_.substr(0, newline_position);
+                    std::string line = receive_buffer_.substr(0, newline_position);
                     receive_buffer_.erase(0, newline_position + 1);
                     if(!line.empty() && line.back() == '\r') {
                         line.pop_back();
@@ -176,9 +176,9 @@ class SerialBridge : public rclcpp::Node {
         rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr armed_publisher_;
         rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr failsafe_publisher_;
         rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr throttle_publisher_;
-}
+};
 
-int main(int argc, char * argv[] {
+int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
 
     rclcpp::spin(std::make_shared<SerialBridge>());
@@ -186,4 +186,4 @@ int main(int argc, char * argv[] {
     rclcpp::shutdown();
 
     return 0;
-})
+}
