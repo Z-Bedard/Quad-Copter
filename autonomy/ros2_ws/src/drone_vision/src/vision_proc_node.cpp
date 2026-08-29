@@ -4,7 +4,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "geometry_msgs/msg/quaternion.hpp"
+#include "geometry_msgs/msg/quaternion_stamped.hpp"
 #include "cv_bridge/cv_bridge.hpp"
 
 #include <opencv2/opencv.hpp>
@@ -17,7 +17,7 @@ class VisionProc : public rclcpp::Node {
     public:
         VisionProc() : Node("vision_proc_node") {
             image_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/camera/image_raw", 10, std::bind(&VisionProc::image_callback, this, std::placeholders::_1));
-            orientation_publisher_ = this->create_publisher<geometry_msgs::msg::Quaternion>("/drone/vision/orientation", 10);
+            orientation_publisher_ = this->create_publisher<geometry_msgs::msg::QuaternionStamped>("/drone/vision/orientation", 10);
 
             matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, false);
 
@@ -377,12 +377,15 @@ class VisionProc : public rclcpp::Node {
                         tf_rotation.getRotation(quaternion);
                         quaternion.normalize();
 
-                        geometry_msgs::msg::Quaternion orientation_msg;
+                        geometry_msgs::msg::QuaternionStamped orientation_msg;
 
-                        orientation_msg.x = quaternion.x();
-                        orientation_msg.y = quaternion.y();
-                        orientation_msg.z = quaternion.z();
-                        orientation_msg.w = quaternion.w();
+                        orientation_msg.header.stamp = this->now();
+                        orientation_msg.header.frame_id = "base_link";
+
+                        orientation_msg.quaternion.x = quaternion.x();
+                        orientation_msg.quaternion.y = quaternion.y();
+                        orientation_msg.quaternion.z = quaternion.z();
+                        orientation_msg.quaternion.w = quaternion.w();
 
                         orientation_publisher_->publish(orientation_msg);
 
