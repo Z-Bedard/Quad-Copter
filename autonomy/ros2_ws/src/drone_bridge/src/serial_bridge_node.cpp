@@ -112,7 +112,9 @@ class SerialBridge : public rclcpp::Node {
                     if(!line.empty() && line.back() == '\r') {
                         line.pop_back();
                     }
-                    RCLCPP_INFO(this->get_logger(), "Serial RX: %s", line.c_str());
+                    if(line.rfind("ACK," 0) == 0){
+                        RCLCPP_INFO(this->get_logger(), "Serial RX: %s", line.c_str());
+                    }
                     parse_telemetry(line);
                 }
             }
