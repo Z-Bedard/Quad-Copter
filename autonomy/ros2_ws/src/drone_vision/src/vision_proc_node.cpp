@@ -29,7 +29,7 @@ class VisionProc : public rclcpp::Node {
 
         const int MAX_TRACKING_FAILURES = 3;
         const int RAY_RANSAC_ITERATIONS = 50;
-        const int MIN_RAY_INLIERS = 8;
+        const size_t MIN_RAY_INLIERS = 8;
         const size_t MIN_GOOD_MATCHES_FOR_TRACKING = 20;
         const size_t MIN_FEATURES_FOR_KEYFRAME = 100;
         const float MATCH_RATIO_THRESHOLD = 0.75f;
@@ -243,7 +243,6 @@ class VisionProc : public rclcpp::Node {
                     }
                     
                     cv::Mat final_ray_rotation;
-                    bool ray_rotation_valid = false;
                     double final_ray_rotation_deg = 0.0;
 
                     if(best_ray_inliers.size() >= MIN_RAY_INLIERS) {
@@ -267,14 +266,26 @@ class VisionProc : public rclcpp::Node {
                             final_ray_rotation = final_svd.u * correction * final_svd.vt;
                         }
 
+                        std::vector<double> final_ray_residuals_deg;
+                        for(int index : best_ray_inliers) {
+                            cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[index][0], keyframe_rays[index][1], keyframe_rays[index][2]);
+                            cv::Mat predicted_ray = final_ray_rotation * keyframe_ray;
+                            cv::Vec3d predicted(predicted_ray.at<double>(0, 0), predicted_ray.at<double>(1, 0), predicted_ray.at<double>(2, 0));
+                            double dot = predicted.dot(curr_rays[index]);
+                            dot = std::clamp(dot, -1.0, 1.0);
+                            double residual_deg = std::acos(dot) * 180.0 / CV_PI;  
+                            final_ray_rotation_deg.push_bacl(residual_deg);
+                        }
+
+                        std::sort(final_ray_residuals_deg.begin(), final_ray_residuals_deg.end());
+                        double final_median_ray_residual_deg = final_ray_residuals_deg[final_ray_residuals_deg.size() / 2];
+
                         cv::Mat final_ray_rotation_vector;
                         cv::Rodrigues(final_ray_rotation, final_ray_rotation_vector);
                         final_ray_rotation_deg = cv::norm( final_ray_rotation_vector) * 180.0 / CV_PI;
                         double ray_inlier_ratio = static_cast<double>(best_ray_inliers.size()) / static_cast<double>(keyframe_rays.size());
 
-                        ray_rotation_valid = true;
-
-                        RCLCPP_INFO(this->get_logger(), "Ray RANSAC: %.2f deg | Inliers: %zu / %zu = %.1f%%", final_ray_rotation_deg, best_ray_inliers.size(), keyframe_rays.size(), ray_inlier_ratio * 100.0);
+                        RCLCPP_INFO(this->get_logger(), "Ray RANSAC: %.2f deg | Inliers: %zu / %zu = %.1f%% | Mdeian residual: %.2f deg", final_ray_rotation_deg, best_ray_inliers.size(), keyframe_rays.size(), ray_inlier_ratio * 100.0, final_median_ray_residual_deg);
                     }
                     cv::Mat inlier_mask;
 
