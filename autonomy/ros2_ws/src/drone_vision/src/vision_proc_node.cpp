@@ -173,46 +173,57 @@ class VisionProc : public rclcpp::Node {
                 cv::undistortPoints(keyframe_points, keyframe_points_undistorted, camera_matrix_, distortion_coefficients_);
                 cv::undistortPoints(curr_points, curr_points_undistorted, camera_matrix_, distortion_coefficients_);    
 
-                std::vector<cv::Vec3d> keyframe_rays;
-                std::vector<cv::Vec3d> curr_rays;
-
-                for(size_t i = 0; i < keyframe_points_undistorted.size(); ++i) {
-                    cv::Vec3d keyframe_ray(keyframe_points_undistorted[i].x, keyframe_points_undistorted[i].y, 1.0);
-                    cv::Vec3d curr_ray(curr_points_undistorted[i].x, curr_points_undistorted[i].y, 1.0);
-                
-                    keyframe_ray /= cv::norm(keyframe_ray);
-                    curr_ray /= cv::norm(curr_ray);
-
-                    keyframe_rays.push_back(keyframe_ray);
-                    curr_rays.push_back(curr_ray);
-                }
-
-                cv::Mat correlation = cv::Mat::zeros(3, 3, CV_64F);
-
-                for(size_t i = 0; i < keyframe_rays.size(); ++i) {
-                    cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[i][0], keyframe_rays[i][1], keyframe_rays[i][2]);
-                    cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[i][0], curr_rays[i][1], curr_rays[i][2]);
-                    correlation += curr_ray * keyframe_ray.t();
-                }
-
-                cv::SVD svd(correlation, cv::SVD::FULL_UV);
-                cv::Mat ray_rotation = svd.u * svd.vt;
-
-                if(cv::determinant(ray_rotation) < 0.0) {
-                    cv::Mat correction = cv::Mat::eye(3, 3, CV_64F);
-                    correction.at<double>(2, 2) = -1.0;
-                    ray_rotation = svd.u * correction * svd.vt;
-                }
-
-                cv::Mat ray_rotation_vector;
-                cv::Rodrigues(ray_rotation, ray_rotation_vector);
-                double ray_rotation_deg = cv::norm(ray_rotation_vector) * 180.0 / CV_PI;
-                RCLCPP_INFO(this->get_logger(), "Ray rotation: %.2f deg", ray_rotation_deg);
-
                 if(keyframe_points_undistorted.size() >= 8){
                     cv::Mat inlier_mask;
 
                     cv::Mat essential_matrix = cv::findEssentialMat(keyframe_points_undistorted, curr_points_undistorted, 1.0, cv::Point2d(0.0, 0.0), cv::RANSAC, 0.999, 0.003, inlier_mask);
+                    
+                    std::vector<cv::Vec3d> keyframe_rays;
+                    std::vector<cv::Vec3d> curr_rays;
+
+                    for(size_t i = 0; i < keyframe_points_undistorted.size(); ++i) {
+                        cv::Vec3d keyframe_ray(keyframe_points_undistorted[i].x, keyframe_points_undistorted[i].y, 1.0);
+                        cv::Vec3d curr_ray(curr_points_undistorted[i].x, curr_points_undistorted[i].y, 1.0);
+                    
+                        keyframe_ray /= cv::norm(keyframe_ray);
+                        curr_ray /= cv::norm(curr_ray);
+
+                        keyframe_rays.push_back(keyframe_ray);
+                        curr_rays.push_back(curr_ray);
+                    }
+
+                    cv::Mat correlation = cv::Mat::zeros(3, 3, CV_64F);
+                    int ray_inliers = 0;
+
+                    for(size_t i = 0; i < keyframe_rays.size(); ++i) {
+                        if(inlier_mask.at<uchar>(static_cast<int>(i)) == 0) {
+                            continue;
+                        }
+                        
+                        cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[i][0], keyframe_rays[i][1], keyframe_rays[i][2]);
+                        cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[i][0], curr_rays[i][1], curr_rays[i][2]);
+                        correlation += curr_ray * keyframe_ray.t();
+
+                        ray_inliers++;
+                    }
+
+                    if(ray_inliers >= 8) {
+                        cv::SVD svd(correlation, cv::SVD::FULL_UV);
+                        cv::Mat ray_rotation = svd.u * svd.vt;
+
+                        if(cv::determinant(ray_rotation) < 0.0) {
+                            cv::Mat correction = cv::Mat::eye(3, 3, CV_64F);
+                            correction.at<double>(2, 2) = -1.0;
+                            ray_rotation = svd.u * correction * svd.vt;
+                        }
+
+                        cv::Mat ray_rotation_vector;
+                        cv::Rodrigues(ray_rotation, ray_rotation_vector);
+                        double ray_rotation_deg = cv::norm(ray_rotation_vector) * 180.0 / CV_PI;
+                        RCLCPP_INFO(this->get_logger(), "Ray rotation: %.2f deg | Rays: %d", ray_rotation_deg, ray_inliers);
+
+                    }
+
                     if(!essential_matrix.empty()) {
                         int inlier_count = cv::countNonZero(inlier_mask);
                         // RCLCPP_INFO(this->get_logger(), "RANSAC inliers: %d / %zu", inlier_count, keyframe_points_undistorted.size());
