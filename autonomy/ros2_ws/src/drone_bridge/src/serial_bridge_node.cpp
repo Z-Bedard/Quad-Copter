@@ -207,6 +207,7 @@ class SerialBridge : public rclcpp::Node {
 
                 stream << "CMD," << command_sequence_ << "," << command_roll_deg_ << "," << command_pitch_deg_ << "," << command_yaw_rate_dps_ << "," << command_throttle_us_ << "\n";
                 std::string packet = stream.str();
+                RCLCPP_INFO(this->get_logger(), "Serial TX: %s", packet.c_str());
                 ssize_t bytes_written = write(serial_fd_, packet.c_str(), packet.size());
                 if(bytes_written < 0) {
                     RCLCPP_WARN(this->get_logger(), "Failed to write command to ESP32");
