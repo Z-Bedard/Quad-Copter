@@ -80,7 +80,18 @@ struct RcCmd {
   bool failsafe;
 };
 
+struct PiCmd {
+  uint32_t sequence;
+  float roll_target_deg;
+  float pitch_target_deg;
+  float yaw_rate_dps;
+  int throttle_us;
+  uint32_t last_update_ms;
+  bool valid;
+};
+
 static RcCmd gRc = {1400, 0.0f, 0.0f, 0.0f, false, true};
+static PiCmd gPiCmd = {0, 0.0f, 0.0f, 0.0f, 1000, 0, false};
 
 // Debug values
 volatile float gDbgRoll = 0.0f;
@@ -233,6 +244,65 @@ static void sendTelemetry(const AttitudeEstimate& attitude, float gx_dps, float 
   );
 }
 
+static void handleSerialCommands() {
+  static String line;
+
+  while(Serial.available() > 0) {
+    char c = Serial.read();
+
+    if(c == '\n') {
+      serial.printf("RXRAW,%s\n", line.c_str());
+      if(line.startsWith("CMD,")) {
+        unsigned long sequence;
+        float roll;
+        float pitch;
+        float yawRate;
+        int throttle;
+
+        int parsed = sscanf(
+          line.c_str(),
+          "CMD,%lu,%f,%f,%f,%d",
+          &sequence,
+          &roll,
+          &pitch,
+          &yawRate,
+          &throttle
+        );
+
+        if (parsed == 5) {
+          gPiCmd.sequence = sequence;
+          gPiCmd.roll_target_deg = clampf(roll, -MAX_ROLL_DEG, MAX_ROLL_DEG);
+          gPiCmd.pitch_target_deg = clampf(pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG);
+          gPiCmd.yaw_rate_dps = yawRate;
+
+          if(throttle < MIN_US) {
+            throttle = MIN_US;
+          }
+          if(throttle > MAX_US) {
+            throttle = MAX_US;
+          }
+
+          gPiCmd.throttle_us = throttle;
+
+          gPiCmd.last_update_ms = millis();
+          gPiCmd.valid = true;
+
+          Serial.printf(
+            "ACK,%lu,%.2f,%.2f,%.2f,%d\n",
+            sequence,
+            gPiCmd.roll_target_deg,
+            gPiCmd.pitch_target_deg,
+            gPiCmd.yaw_rate_dps,
+            gPiCmd.throttle_us
+          );
+        }
+      }
+      line = "";
+    } else if (c != '\r') {
+      line += c;
+    }
+  }
+}
 void onConnectedController(ControllerPtr ctl) {
   for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
     if (gControllers[i] == nullptr) {
@@ -393,6 +463,7 @@ void controlTask(void* pvParameters) {
   uint32_t telemetryCounter = 0;
 
   while (true) {
+    handleSerialCommands();
     RcCmd rcLocal;
 
     portENTER_CRITICAL(&rcMux);
