@@ -384,7 +384,7 @@ class VisionProc : public rclcpp::Node {
                         orientation_msg.z = quaternion.z();
                         orientation_msg.w = quaternion.w();
 
-                        orientation_publiser_->publish(orientation msg);
+                        orientation_publiser_->publish(orientation_msg);
 
                         keyframe_keypoints_ = keypoints;
                         keyframe_descriptors_ = descriptors.clone();
