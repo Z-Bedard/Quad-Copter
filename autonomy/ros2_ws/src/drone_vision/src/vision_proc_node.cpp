@@ -4,16 +4,21 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "geometry_msgs/msg/quaternion.hpp"
 #include "cv_bridge/cv_bridge.hpp"
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/features2d.hpp>
 
+#include "tf2/LinearMath/Matrix3x3.h"
+#include "tf2/LinearMath/Quaternion.h"
+
 class VisionProc : public rclcpp::Node {
     public:
         VisionProc() : Node("vision_proc_node") {
             image_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/camera/image_raw", 10, std::bind(&VisionProc::image_callback, this, std::placeholders::_1));
-            
+            orientation_publisher_ = this->create_publisher<geometry_msgs::msg::Quaternion>("/drone/vision/orientation", 10);
+
             matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, false);
 
             orb_ = cv::ORB::create(1000);
@@ -353,8 +358,33 @@ class VisionProc : public rclcpp::Node {
                         cv::Rodrigues(body_rotation_world, rotation_vector);
 
                         cv::Mat rotation_vector_deg = rotation_vector * (180.0 / CV_PI);
-
                         std::cout << "Body rotation vector [deg]: \n" << rotation_vector_deg << std::endl;
+
+                        tf2::Matrix3x3 tf_rotation(
+                            body_rotation_world.at<double>(0, 0),
+                            body_rotation_world.at<double>(0, 1),
+                            body_rotation_world.at<double>(0, 2),
+
+                            body_rotation_world.at<double>(1, 0),
+                            body_rotation_world.at<double>(1, 1),
+                            body_rotation_world.at<double>(1, 2),
+
+                            body_rotation_world.at<double>(2, 0),
+                            body_rotation_world.at<double>(2, 1),
+                            body_rotation_world.at<double>(2, 2));
+                        
+                        tf2::Quaternion quaternion;
+                        tf_rotation.getRotation(quaternion);
+                        quaternion.normalize();
+
+                        geometry_msgs::msg::Quaternion orientation_msg;
+
+                        orientation_msg.x = quaternion.x();
+                        orientation_msg.y = quaternion.y();
+                        orientation_msg.z = quaternion.z();
+                        orientation_msg.w = quaternion.w();
+
+                        orientation_publiser_->publish(orientation msg);
 
                         keyframe_keypoints_ = keypoints;
                         keyframe_descriptors_ = descriptors.clone();
@@ -367,6 +397,7 @@ class VisionProc : public rclcpp::Node {
             }
         }
 
+        rclcpp::Publisher<geometry_msgs::msg::Quaternion>SharedPtr orientation_publisher_;
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
 };
 
