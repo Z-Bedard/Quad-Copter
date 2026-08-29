@@ -216,6 +216,16 @@ class VisionProc : public rclcpp::Node {
                             RCLCPP_INFO(this->get_logger(), "New keyframe created");
                         } else {
                             RCLCPP_WARN(this->get_logger(), "Pose rejected - keeping previous keyframe");
+
+                            cv::Mat homography_mask;
+                            cv::Mat homography = cv::findHomography(keyframe_points_undistorted, curr__points_undistorted, cv::RANSAC, 0.003, homography_mask);
+
+                            if(!homography.empty()) {
+                                int homography_inliers = cv::countNonZero(homography_mask);
+
+                                double homography_inlier_ratio = static_cast<doube>(homography_inliers) / static_cast<double>(keyframe_points_undistorted.size());
+
+                                RCLCPP_INFO(this->get_logger(), "Pose rejected | Homography: %d / &zu = %.1f%%", homography_inliers, keyframe_points_undistorted.size(), homography_inliers_ratio * 100.0);
                         }
                     }
                 }
