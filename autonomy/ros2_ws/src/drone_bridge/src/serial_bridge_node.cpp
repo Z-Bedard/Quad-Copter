@@ -13,6 +13,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <stdexcept>
 
 class SerialBridge : public rclcpp::Node {
     public:
@@ -22,6 +26,9 @@ class SerialBridge : public rclcpp::Node {
             armed_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/drone/fc/armed", 10);
             failsafe_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/drone/fc/failsafe", 10);
             throttle_publisher_ = this->create_publisher<std_msgs::msg::Int32>("/drone/fc/throttle_us", 10);
+
+            command_attitude_subscription_ = this->create_subscription<geometry_msgs::msg::Vector3>("/drone/cmd_attitude", 10, std::bind(&SerialBridge::attitude_command_callback, this, std::placeholders::_1));
+            command_throttle_subscription_ = this->create_subscription<std_msgs::msg::Int32>("/drone/cmd_throttle", 10, std::bind(&SerialBridge::throttle_command_callback, this, std::placeholders::_1));
 
             open_serial_port();
             serial_timer_ = this->create_wall_timer(std::chrono::milliseconds(5), std::bind(&SerialBridge::read_serial, this));
@@ -34,6 +41,13 @@ class SerialBridge : public rclcpp::Node {
         }
 
         private:
+            double command_roll_deg_ = 0.0;
+            double command_pitch_deg_ = 0.0;
+            double command_yaw_rate_dps_ = 0.0;
+            int command_throttle_us_ = 1000;
+
+            uint32_t command_sequence_ = 0;
+
             void open_serial_port() {
                 serial_fd_ = open("/dev/ttyUSB0", O_RDWR | O_NOCTTY | O_NONBLOCK);
                 if(serial_fd_ < 0) {
@@ -166,6 +180,36 @@ class SerialBridge : public rclcpp::Node {
                 }                
             }
 
+            void attitude_command_callback(const geometry_msgs::msg::Vector3::SharedPtr msg) {
+                command_roll_deg_ = msg->x;
+                command_pitch_deg_ = msg->y;
+                command_yaw_rate_dps_ = msg->z;
+
+                send_command();
+            }
+
+            void throttle_command_callback(const std_msgs::msg::Int32::SharedPtr msg) {
+                command_throttle_us_ = msg->data;
+
+                send_command();
+            }
+
+            void send_command() {
+                if(serial_fd_ < 0) {
+                    return;
+                }
+                
+                command_sequence_++;
+                std::ostringstream stream;
+
+                stream << "CMD," << command_sequence_ << "," << command_roll_deg_ << "," << command_pitch_deg_ << "," << command_yaw_rate_dps_ << "," << command_throttle_us_ << "\n";
+                std::string packet = stream.str();
+                ssize_t bytes_written = write(serial_fd_, packet.c_str(), packet.size());
+                if(bytes_written < 0) {
+                    RCLCPP_WARN(this->get_logger(), "Failed to write command to ESP32");
+                }
+            }
+
         int serial_fd_ = -1;
         std::string receive_buffer_;
 
@@ -176,6 +220,9 @@ class SerialBridge : public rclcpp::Node {
         rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr armed_publisher_;
         rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr failsafe_publisher_;
         rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr throttle_publisher_;
+
+        rclcpp::Subscription<geometry_msgs::msg::Vector3>::SharedPtr command_attitude_subscription_;
+        rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr command_throttle_subscription_;
 };
 
 int main(int argc, char * argv[]) {
