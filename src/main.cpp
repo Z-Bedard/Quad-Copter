@@ -163,7 +163,7 @@ static AttitudeEstimate updateAttitudeEstimate(float ax, float ay, float az,
   return gAttitude;
 }
 
-LevelOut levelFromSensors(float ax, float ay, float az,
+LevelOut levelFromSensors(const AttitudeEstimate& attitude,
                           float gx_dps, float gy_dps, float gz_dps,
                           float dt_s,
                           int base_us,
@@ -173,7 +173,6 @@ LevelOut levelFromSensors(float ax, float ay, float az,
                           float roll_target_deg, float pitch_target_deg,
                           float yaw_norm, float yaw_gain_us,
                           int out_us[4]) {
-  AttitudeEstimate attitude = updateAttitudeEstimate(ax, ay, az, gx_dps, gy_dps, dt_s);
 
   float roll_target  = (roll_target_deg + ROLL_TRIM_DEG) * (M_PI / 180.0f);
   float pitch_target = (pitch_target_deg + PITCH_TRIM_DEG) * (M_PI / 180.0f);
@@ -212,6 +211,26 @@ LevelOut levelFromSensors(float ax, float ay, float az,
   out_us[RL] = (int)rl;
 
   return {attitude.roll_rad, attitude.pitch_rad, gx_dps, gy_dps, gz_dps};
+}
+
+static void sendTelemetry(const AttitudeEstimate& attitude, float gx_dps, float gy_dps, float gz_dps, const RcCmd& rc) {
+  float roll_deg = attitude.roll_rad * RAD_TO_DEG;
+  float pitch_deg = attitude.pitch_rad * RAD_TO_DEG;
+
+  Serial.printf(
+    "TEL,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%.3f,%.3f,%.3f\n",
+    roll_deg,
+    pitch_deg,
+    gx_dps,
+    gy_dps,
+    gz_dps,
+    rc.armed ? 1 : 0,
+    rc.failsafe ? 1 : 0,
+    rc.throttle_us,
+    rc.roll_target_deg,
+    rc.pitch_target_deg,
+    rc.yaw
+  );
 }
 
 void onConnectedController(ControllerPtr ctl) {
@@ -371,17 +390,47 @@ void controlTask(void* pvParameters) {
   TickType_t lastWake = xTaskGetTickCount();
   uint32_t lastMicros = micros();
 
-  uint32_t printCounter = 0;
+  uint32_t telemetryCounter = 0;
 
   while (true) {
     RcCmd rcLocal;
-    bool justArmedLocal;
 
     portENTER_CRITICAL(&rcMux);
     rcLocal = gRc;
-    justArmedLocal = gJustArmed;
+
     if (gJustArmed) gJustArmed = false;
     portEXIT_CRITICAL(&rcMux);
+
+    imu.getSensorData();
+    uint32_t nowMicros = micros();
+    float dt_s = (nowMicros - lastMicros) / 1000000.0f;
+    lastMicros = nowMicros;
+    dt_s = clampf(dt_s, DT_MIN_S, DT_MAX_S);
+
+    if(!isfinite(dt_s)) {
+      dt_s = DT_FALLBACK_S;
+    }
+
+    float gyroX_dps = -(imu.data.gyroX - gGyroBias.x_dps);
+    float gyroY_dps = imu.data.gyroY - gGyroBias.y_dps;
+    float gyroZ_dps = imu.data.gyroZ - gGyroBias.z_dps;
+    AttitudeEstimate attitude = updateAttitudeEstimate(
+      imu.data.accelX,
+      imu.data.accelY,
+      imu.data.accelZ,
+      gyroX_dps,
+      gyroY_dps,
+      dt_s);
+
+    gDbgRoll = attitude.roll_rad;
+    gDbgPitch = attitude.pitch_rad;
+
+    telemetryCounter++; 
+    if(telemetryCounter >= 10) {
+      telemetryCounter = 0;
+
+      sendTelemetry(attitude, gyroX_dps, gyroY_dps, gyroZ_dps, rcLocal);
+    }
 
     if (rcLocal.failsafe || !rcLocal.armed) {
       gRollIntegralUs = 0.0f;
@@ -391,18 +440,6 @@ void controlTask(void* pvParameters) {
       continue;
     }
 
-    imu.getSensorData();
-
-    uint32_t nowMicros = micros();
-    float dt_s = (nowMicros - lastMicros) / 1000000.0f;
-    lastMicros = nowMicros;
-    dt_s = clampf(dt_s, DT_MIN_S, DT_MAX_S);
-    if (!isfinite(dt_s)) dt_s = DT_FALLBACK_S;
-
-    float gyroX_dps = -(imu.data.gyroX - gGyroBias.x_dps);
-    float gyroY_dps = imu.data.gyroY - gGyroBias.y_dps;
-    float gyroZ_dps = imu.data.gyroZ - gGyroBias.z_dps;
-
     int cmd_us[4];
 
     // Enforce continuous armed idle floor
@@ -410,7 +447,7 @@ void controlTask(void* pvParameters) {
     if (base_us < MIN_US_IN_FLIGHT) base_us = MIN_US_IN_FLIGHT;
 
     LevelOut ang = levelFromSensors(
-      imu.data.accelX, imu.data.accelY, imu.data.accelZ,
+      attitude,
       gyroX_dps, gyroY_dps, gyroZ_dps,
       dt_s,
       base_us,
@@ -432,16 +469,6 @@ void controlTask(void* pvParameters) {
     gDbgPitch = ang.pitch_rad;
     for (int i = 0; i < 4; i++) {
       gDbgCmd[i] = cmd_us[i];
-    }
-
-    // Print at 10 Hz instead of every 250 Hz cycle
-    printCounter++;
-    if (printCounter >= 25) {
-      printCounter = 0;
-      Serial.printf("roll=%.3f pitch=%.3f gx=%.2f gy=%.2f gz=%.2f | FR %d FL %d RR %d RL %d\n",
-                    gDbgRoll, gDbgPitch,
-                    ang.roll_rate_dps, ang.pitch_rate_dps, ang.yaw_rate_dps,
-                    gDbgCmd[FR], gDbgCmd[FL], gDbgCmd[RR], gDbgCmd[RL]);
     }
 
     vTaskDelayUntil(&lastWake, period);
