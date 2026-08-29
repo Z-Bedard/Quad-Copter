@@ -25,6 +25,7 @@ class VisionProc : public rclcpp::Node {
         const double MIN_KEYFRAME_DISPLACEMENT_PX = 8.0;
         const double MAX_KEYFRAME_DISPLACEMENT_PX = 80.0;
         const double MAX_RELATIVE_ROTATION_DEG = 25.0;
+        const double MAX_RAY_RESIDUAL_DEG = 3.0;
 
         const int MAX_TRACKING_FAILURES = 3;
         const size_t MIN_GOOD_MATCHES_FOR_TRACKING = 20;
@@ -222,14 +223,40 @@ class VisionProc : public rclcpp::Node {
                         double ray_rotation_deg = cv::norm(ray_rotation_vector) * 180.0 / CV_PI;
 
                         std::vector<double> ray_residuals_deg;
+                        cv::Mat refined_correlation = cv::Mat::zeros(3, 3, CV_64F);
+                        int refined_ray_count = 0;
+
                         for(size_t i = 0; i < keyframe_rays.size(); ++i) {
                             cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[i][0], keyframe_rays[i][1], keyframe_rays[i][2]);
+                            cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[i][0], curr_rays[i][1], curr_rays[i][2]);
+                            
                             cv::Mat predicted_ray = ray_rotation * keyframe_ray;
                             cv::Vec3d predicted(predicted_ray.at<double>(0, 0), predicted_ray.at<double>(1, 0), predicted_ray.at<double>(2, 0));
                             double dot = predicted.dot(curr_rays[i]);
                             dot = std::clamp(dot, -1.0, 1.0);
                             double residual_deg = std::acos(dot) * 180.0 / CV_PI;
                             ray_residuals_deg.push_back(residual_deg);
+
+                            if(residual_deg <= MAX_RAY_RESIDUAL_DEG) {
+                                refined_correlation += curr_ray * keyframe_ray.t();
+                                refined_ray_count++;
+                            }
+                        }
+
+                        if(refined_ray_count >= 8) {
+                            cv::SVD refined_svd(refined_correlation, cv::SVD::FULL_UV);
+                            cv::Mat refined_ray_rotation = refined_svd.u * refined_svd.vt;
+                            if(cv::determinant(refined_ray_rotation) < 0.0) {
+                                cv::Mat correction = cv::Mat::eye(3, 3, CV_64F);
+                                correction.at<double>(2, 2) = -1.0;
+                                refined_ray_rotation = refined_svd.u * correction * refined_svd.vt;
+                            }
+
+                            cv::Mat refined_rotation_vector;
+                            cv::Rodrigues(refined_ray_rotation, refined_rotation_vector);
+
+                            double refined_rotation_deg = cv::norm(refined_rotation_vector) * 180.0 / CV_PI;
+                            RCLCPP_INFO(this->get_logger(), "Refined ray rotation: %.2f deg | Rays kept: %d", refined_rotation_deg, refined_ray_count);
                         }
 
                         std::sort(ray_residuals_deg.begin(), ray_residuals_deg.end());
