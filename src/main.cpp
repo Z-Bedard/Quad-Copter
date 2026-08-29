@@ -251,7 +251,7 @@ static void handleSerialCommands() {
     char c = Serial.read();
 
     if(c == '\n') {
-      serial.printf("RXRAW,%s\n", line.c_str());
+      Serial.printf("RXRAW,%s\n", line.c_str());
       if(line.startsWith("CMD,")) {
         unsigned long sequence;
         float roll;
