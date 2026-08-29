@@ -24,6 +24,7 @@ class VisionProc : public rclcpp::Node {
         const double MIN_POSE_INLIER_RATIO = 0.5;
         const double MIN_KEYFRAME_DISPLACEMENT_PX = 8.0;
         const double MAX_KEYFRAME_DISPLACEMENT_PX = 80.0;
+        const double MAX_RELATIVE_ROTATION_DEG = 25.0;
 
         const int MAX_TRACKING_FAILURES = 3;
         const size_t MIN_GOOD_MATCHES_FOR_TRACKING = 20;
@@ -198,7 +199,7 @@ class VisionProc : public rclcpp::Node {
                         double relative_rotation_deg = relative_rotation_rad * 180.0/CV_PI;
                         RCLCPP_INFO(this->get_logger(), "Relative rotation: %.2f deg", relative_rotation_deg);
 
-                        bool pose_valid = pose_inliers >= MIN_POSE_INLIERS && pose_inlier_ratio >= MIN_POSE_INLIER_RATIO;
+                        bool pose_valid = pose_inliers >= MIN_POSE_INLIERS && pose_inlier_ratio >= MIN_POSE_INLIER_RATIO && relative_rotation_deg <= MAX_RELATIVE_ROTATION_DEG;
                         if(pose_valid) {
                             RCLCPP_INFO(this->get_logger(), "Pose accepted");
                             global_rotation_cw_ = rotation * global_rotation_cw_;
@@ -223,6 +224,9 @@ class VisionProc : public rclcpp::Node {
                             RCLCPP_INFO(this->get_logger(), "New keyframe created");
                         } else {
                             RCLCPP_WARN(this->get_logger(), "Pose rejected - keeping previous keyframe");
+                            if(relative_rotation_deg > MAX_RELATIVE_ROTATION_DEG) {
+                                RCLCPP(this->get_logger(), "Pose rejected - relative rotation: %.2f deg", relative_rotation_deg);
+                            }
 
                             cv::Mat homography_mask;
                             cv::Mat homography = cv::findHomography(keyframe_points_undistorted, curr_points_undistorted, cv::RANSAC, 0.003, homography_mask);
