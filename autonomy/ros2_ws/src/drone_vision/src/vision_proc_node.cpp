@@ -28,6 +28,8 @@ class VisionProc : public rclcpp::Node {
         const double MAX_RAY_RESIDUAL_DEG = 3.0;
 
         const int MAX_TRACKING_FAILURES = 3;
+        const int RAY_RANSAC_ITERATIONS = 50;
+        const int MIN_RAY_INLIERS = 8;
         const size_t MIN_GOOD_MATCHES_FOR_TRACKING = 20;
         const size_t MIN_FEATURES_FOR_KEYFRAME = 100;
         const float MATCH_RATIO_THRESHOLD = 0.75f;
@@ -175,10 +177,6 @@ class VisionProc : public rclcpp::Node {
                 cv::undistortPoints(curr_points, curr_points_undistorted, camera_matrix_, distortion_coefficients_);    
 
                 if(keyframe_points_undistorted.size() >= 8){
-                    cv::Mat inlier_mask;
-
-                    cv::Mat essential_matrix = cv::findEssentialMat(keyframe_points_undistorted, curr_points_undistorted, 1.0, cv::Point2d(0.0, 0.0), cv::RANSAC, 0.999, 0.003, inlier_mask);
-                    
                     std::vector<cv::Vec3d> keyframe_rays;
                     std::vector<cv::Vec3d> curr_rays;
 
@@ -193,80 +191,94 @@ class VisionProc : public rclcpp::Node {
                         curr_rays.push_back(curr_ray);
                     }
 
-                    cv::Mat correlation = cv::Mat::zeros(3, 3, CV_64F);
-                    int ray_inliers = 0;
-
-                    for(size_t i = 0; i < keyframe_rays.size(); ++i) {
-                        if(inlier_mask.at<uchar>(static_cast<int>(i)) == 0) {
-                            continue;
-                        }
+                    std::vector<int> best_ray_inliers;
+                    cv::RNG rng(static_cast<uint64>(cv::getTickCount()));
+                    for(int iteration = 0; iteration < RAY_RANSAC_ITERATIONS; ++iteration) {
+                        int index_a = rng.uniform(0, static_cast<int>(keyframe_rays.size()));
                         
-                        cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[i][0], keyframe_rays[i][1], keyframe_rays[i][2]);
-                        cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[i][0], curr_rays[i][1], curr_rays[i][2]);
-                        correlation += curr_ray * keyframe_ray.t();
+                        int index_b;
+                        do {
+                            index_b = rng.uniform(0, static_cast<int>(keyframe_rays.size()));
+                        } while(index_b == index_a);
 
-                        ray_inliers++;
-                    }
+                        int index_c;
+                        do {
+                            index_c = rng.uniform(0, static_cast<int>(keyframe_rays.size()));
+                        } while(index_c == index_a || index_c == index_b);
 
-                    if(ray_inliers >= 8) {
-                        cv::SVD svd(correlation, cv::SVD::FULL_UV);
-                        cv::Mat ray_rotation = svd.u * svd.vt;
+                        cv::Mat sample_correlation = cv::Mat::zeros(3, 3, CV_64F);
+                        int sample_indices[3] = {index_a, index_b, index_c};
 
-                        if(cv::determinant(ray_rotation) < 0.0) {
+                        for(int sample_index : sample_indices) {
+                            cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[sample_index][0], keyframe_rays[sample_index][1], keyframe_rays[sample_index][2]);
+                            cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[sample_index][0], curr_rays[sample_index][1], curr_rays[sample_index][2]);
+                        
+                            sample_correlation += curr_ray * keyframe_ray.t();
+                        }
+                        cv::SVD sample_svd(sample_correlation, cv::SVD::FULL_UV);
+                        cv::Mat candidate_rotation = sample_svd.u * sample_svd.vt;
+
+                        if(cv::determinant(candidate_rotation) < 0.0) {
                             cv::Mat correction = cv::Mat::eye(3, 3, CV_64F);
                             correction.at<double>(2, 2) = -1.0;
-                            ray_rotation = svd.u * correction * svd.vt;
+                            candidate_rotation = sample_svd.u * correction * sample_svd.vt;
                         }
 
-                        cv::Mat ray_rotation_vector;
-                        cv::Rodrigues(ray_rotation, ray_rotation_vector);
-                        double ray_rotation_deg = cv::norm(ray_rotation_vector) * 180.0 / CV_PI;
-
-                        std::vector<double> ray_residuals_deg;
-                        cv::Mat refined_correlation = cv::Mat::zeros(3, 3, CV_64F);
-                        int refined_ray_count = 0;
-
-                        for(size_t i = 0; i < keyframe_rays.size(); ++i) {
-                            if(inlier_mask.at<uchar>(static_cast<int>(i)) == 0) {
-                                continue;
-                            }
-                            
+                        std::vector<int> candidate_inliers;
+                        for(size_t i = 0; i < keyframe_rays.size(); ++i) {                            
                             cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[i][0], keyframe_rays[i][1], keyframe_rays[i][2]);
-                            cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[i][0], curr_rays[i][1], curr_rays[i][2]);
-                            
-                            cv::Mat predicted_ray = ray_rotation * keyframe_ray;
+                            cv::Mat predicted_ray = candidate_rotation * keyframe_ray;
                             cv::Vec3d predicted(predicted_ray.at<double>(0, 0), predicted_ray.at<double>(1, 0), predicted_ray.at<double>(2, 0));
                             double dot = predicted.dot(curr_rays[i]);
                             dot = std::clamp(dot, -1.0, 1.0);
                             double residual_deg = std::acos(dot) * 180.0 / CV_PI;
-                            ray_residuals_deg.push_back(residual_deg);
 
                             if(residual_deg <= MAX_RAY_RESIDUAL_DEG) {
-                                refined_correlation += curr_ray * keyframe_ray.t();
-                                refined_ray_count++;
+                                candidate_inliers.push_back(static_cast<int>(i));
                             }
                         }
-
-                        if(refined_ray_count >= 8) {
-                            cv::SVD refined_svd(refined_correlation, cv::SVD::FULL_UV);
-                            cv::Mat refined_ray_rotation = refined_svd.u * refined_svd.vt;
-                            if(cv::determinant(refined_ray_rotation) < 0.0) {
-                                cv::Mat correction = cv::Mat::eye(3, 3, CV_64F);
-                                correction.at<double>(2, 2) = -1.0;
-                                refined_ray_rotation = refined_svd.u * correction * refined_svd.vt;
-                            }
-
-                            cv::Mat refined_rotation_vector;
-                            cv::Rodrigues(refined_ray_rotation, refined_rotation_vector);
-
-                            double refined_rotation_deg = cv::norm(refined_rotation_vector) * 180.0 / CV_PI;
-                            RCLCPP_INFO(this->get_logger(), "Refined ray rotation: %.2f deg | Rays kept: %d", refined_rotation_deg, refined_ray_count);
+                        if(candidate_inliers.size() > best_ray_inliers.size()) {
+                            best_ray_inliers = candidate_inliers;
                         }
-
-                        std::sort(ray_residuals_deg.begin(), ray_residuals_deg.end());
-                        double median_ray_residual_deg = ray_residuals_deg[ray_residuals_deg.size() / 2];
-                        RCLCPP_INFO(this->get_logger(), "Ray rotation: %.2f deg | Rays: %d | Median residual: %.2f deg", ray_rotation_deg, ray_inliers, median_ray_residual_deg);
                     }
+                    
+                    cv::Mat final_ray_rotation;
+                    bool ray_rotation_valid = false;
+                    double final_ray_rotation_deg = 0.0;
+
+                    if(best_ray_inliers.size() >= MIN_RAY_INLIERS) {
+
+                        cv::Mat final_correlation = cv::Mat::zeros(3, 3, CV_64F);
+
+                        for(int index : best_ray_inliers) {
+                            cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[index][0], keyframe_rays[index][1], keyframe_rays[index][2]);
+                            cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[index][0], curr_rays[index][1], curr_rays[index][2]);
+
+                            final_correlation += curr_ray * keyframe_ray.t();
+                        }
+
+                        cv::SVD final_svd(final_correlation, cv::SVD::FULL_UV);
+                        final_ray_rotation = final_svd.u * final_svd.vt;
+
+                        if(cv::determinant(candidate_rotation) < 0.0) {
+                            cv::Mat correction = cv::Mat::eye( 3, 3, CV_64F);
+                            correction.at<double>(2, 2) = -1.0;
+
+                            final_ray_rotation = sample_svd.u * correction * sample_svd.vt;
+                        }
+
+                        cv::Mat final_ray_rotation_vector;
+                        cv::Rodrigues(final_ray_rotation, final_ray_rotation_vector);
+                        final_ray_rotation_deg = cv::norm( final_ray_rotation_vector) * 180.0 / CV_PI;
+                        double ray_inlier_ratio = static_cast<double>(best_ray_inliers.size()) / static_cast<double>(keyframe_rays.size());
+
+                        ray_rotation_valid = true;
+
+                        RCLCPP_INFO(this->get_logger(), "Ray RANSAC: %.2f deg | Inliers: %zu / %zu = %.1f%%", final_ray_rotation_deg, best_ray_inliers.size(), keyframe_rays.size(), ray_inlier_ratio * 100.0);
+                    }
+                    cv::Mat inlier_mask;
+
+                    cv::Mat essential_matrix = cv::findEssentialMat(keyframe_points_undistorted, curr_points_undistorted, 1.0, cv::Point2d(0.0, 0.0), cv::RANSAC, 0.999, 0.003, inlier_mask);
 
                     if(!essential_matrix.empty()) {
                         int inlier_count = cv::countNonZero(inlier_mask);
