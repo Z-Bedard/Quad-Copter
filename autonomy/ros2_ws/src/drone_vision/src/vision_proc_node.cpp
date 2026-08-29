@@ -274,7 +274,7 @@ class VisionProc : public rclcpp::Node {
                             double dot = predicted.dot(curr_rays[index]);
                             dot = std::clamp(dot, -1.0, 1.0);
                             double residual_deg = std::acos(dot) * 180.0 / CV_PI;  
-                            final_ray_rotation_deg.push_bacl(residual_deg);
+                            final_ray_rotation_deg.push_back(residual_deg);
                         }
 
                         std::sort(final_ray_residuals_deg.begin(), final_ray_residuals_deg.end());
@@ -288,7 +288,6 @@ class VisionProc : public rclcpp::Node {
                         RCLCPP_INFO(this->get_logger(), "Ray RANSAC: %.2f deg | Inliers: %zu / %zu = %.1f%% | Mdeian residual: %.2f deg", final_ray_rotation_deg, best_ray_inliers.size(), keyframe_rays.size(), ray_inlier_ratio * 100.0, final_median_ray_residual_deg);
                     }
                     cv::Mat inlier_mask;
-
                     cv::Mat essential_matrix = cv::findEssentialMat(keyframe_points_undistorted, curr_points_undistorted, 1.0, cv::Point2d(0.0, 0.0), cv::RANSAC, 0.999, 0.003, inlier_mask);
 
                     if(!essential_matrix.empty()) {
