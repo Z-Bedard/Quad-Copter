@@ -227,6 +227,10 @@ class VisionProc : public rclcpp::Node {
                         int refined_ray_count = 0;
 
                         for(size_t i = 0; i < keyframe_rays.size(); ++i) {
+                            if(inlier_mask.at<uchar>(static_cast<int>(i)) == 0) {
+                                continue;
+                            }
+                            
                             cv::Mat keyframe_ray = (cv::Mat_<double>(3, 1) << keyframe_rays[i][0], keyframe_rays[i][1], keyframe_rays[i][2]);
                             cv::Mat curr_ray = (cv::Mat_<double>(3, 1) << curr_rays[i][0], curr_rays[i][1], curr_rays[i][2]);
                             
