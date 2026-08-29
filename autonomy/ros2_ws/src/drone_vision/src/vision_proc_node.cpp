@@ -384,7 +384,7 @@ class VisionProc : public rclcpp::Node {
                         orientation_msg.z = quaternion.z();
                         orientation_msg.w = quaternion.w();
 
-                        orientation_publiser_->publish(orientation_msg);
+                        orientation_publisher_->publish(orientation_msg);
 
                         keyframe_keypoints_ = keypoints;
                         keyframe_descriptors_ = descriptors.clone();
@@ -397,7 +397,7 @@ class VisionProc : public rclcpp::Node {
             }
         }
 
-        rclcpp::Publisher<geometry_msgs::msg::Quaternion>SharedPtr orientation_publisher_;
+        rclcpp::Publisher<geometry_msgs::msg::Quaternion>::SharedPtr orientation_publisher_;
         rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
 };
 
