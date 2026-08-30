@@ -443,7 +443,7 @@ static inline void rcUpdate() {
   newRc.pitch_target_deg = stickToTargetDeg(ry, MAX_PITCH_DEG);
 
   uint16_t btn = gCtl->buttons();
-  bool modeWasSwitched = false;
+  static bool modeWasSwitched = false;
   bool modeSwitchReq = (btn & 0x0008) != 0;
 
   if (btn & 0x0001) {   // Cross = disarm
