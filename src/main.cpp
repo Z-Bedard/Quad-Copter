@@ -68,6 +68,7 @@ enum class ControlMode : uint8_t {
 
 // Shared state protection
 portMUX_TYPE rcMux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE controlMux = portMUX_INITIALIZER_UNLOCKED;
 
 // IMU
 uint8_t i2cAddress = BMI2_I2C_PRIM_ADDR;
@@ -278,10 +279,9 @@ static void handleSerialCommands() {
         );
 
         if (parsed == 5) {
-          gPiCmd.sequence = sequence;
-          gPiCmd.roll_target_deg = clampf(roll, -MAX_ROLL_DEG, MAX_ROLL_DEG);
-          gPiCmd.pitch_target_deg = clampf(pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG);
-          gPiCmd.yaw_rate_dps = clampf(yawRate, -MAX_YAW_RATE_DPS, MAX_YAW_RATE_DPS);
+          float clampedRoll = clampf(roll, -MAX_ROLL_DEG, MAX_ROLL_DEG);
+          float clampedPitch = clampf(pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG);
+          float clampedYawRate = clampf(yawRate, -MAX_YAW_RATE_DPS, MAX_YAW_RATE_DPS);
 
           if(throttle < MIN_US) {
             throttle = MIN_US;
@@ -290,10 +290,17 @@ static void handleSerialCommands() {
             throttle = MAX_US;
           }
 
-          gPiCmd.throttle_us = throttle;
+          portENTER_CRITICAL(&controlMux);
 
+          gPiCmd.sequence = sequence;
+          gPiCmd.roll_target_deg = clampedRoll;
+          gPiCmd.pitch_target_deg = clampedPitch;
+          gPiCmd.yaw_rate_dps = clampedYawRate;
+          gPiCmd.throttle_us = throttle;
           gPiCmd.last_update_ms = millis();
           gPiCmd.valid = true;
+
+          portEXIT_CRITICAL(&controlMux);
 
           Serial.printf(
             "ACK,%lu,%.2f,%.2f,%.2f,%d\n",
@@ -313,14 +320,24 @@ static void handleSerialCommands() {
 }
 
 static bool isPiCmdValid() {
-  if(!gPiCmd.valid) {
+  bool valid;
+  uint32_t lastUpdateMs;
+
+  portENTER_CRITICAL(&controlMux);
+  valid = gPiCmd.valid;
+  lastUpdateMs = gPiCmd.last_update_ms;
+  portEXIT_CRITICAL(&controlMux);
+
+  if(!valid) {
     return false;
   }
 
-  uint32_t age_ms = millis() - gPiCmd.last_update_ms;
+  uint32_t age_ms = millis() - lastUpdateMs;
 
   if(age_ms > PI_CMD_TIMEOUT_MS) {
+    portENTER_CRITICAL(&controlMux);
     gPiCmd.valid = false;
+    portEXIT_CRITICAL(&controlMux);
     return false;
   }
 
@@ -467,13 +484,17 @@ static inline void rcUpdate() {
   if(modeSwitchReq && !modeWasSwitched) {
     if(gControlMode == ControlMode::MANUAL) {
       if(isPiCmdValid()) {
+        portENTER_CRITICAL(&controlMux);
         gControlMode = ControlMode::PI_ASSISTED;
+        portEXIT_CRITICAL(&controlMux);
         Serial.println("LOG: MODE - PI_ASSISTED");
       } else {
         Serial.println("LOG: MODE REJECTED - PI_COMMAND_STALE");
       }
     } else {
+      portENTER_CRITICAL(&controlMux);
       gControlMode = ControlMode::MANUAL;
+      portEXIT_CRITICAL(&controlMux);
       Serial.println("LOG: MODE - MANUAL");
     }
   }
@@ -509,6 +530,14 @@ void controlTask(void* pvParameters) {
     static bool wasPiCmdValid = false;
     bool piCmdValid = isPiCmdValid();
 
+    PiCmd piLocal;
+    ControlMode controlModeLocal;
+
+    portENTER_CRITICAL(&controlMux);
+    piLocal = gPiCmd;
+    controlModeLocal = gControlMode;
+    portEXIT_CRITICAL(&controlMux);
+
     RcCmd rcLocal;
     portENTER_CRITICAL(&rcMux);
     rcLocal = gRc;
@@ -521,11 +550,11 @@ void controlTask(void* pvParameters) {
     float activeYawRateDps = rcLocal.yaw * MAX_YAW_RATE_DPS;
     int activeThrottleUs = rcLocal.throttle_us;
 
-    if(gControlMode == ControlMode::PI_ASSISTED && piCmdValid) {
-      activeRollTargetDeg = gPiCmd.roll_target_deg;
-      activePitchTargetDeg = gPiCmd.pitch_target_deg;
-      activeYawRateDps = gPiCmd.yaw_rate_dps;
-      activeThrottleUs = gPiCmd.throttle_us;
+    if(controlModeLocal == ControlMode::PI_ASSISTED && piCmdValid) {
+      activeRollTargetDeg = piLocal.roll_target_deg;
+      activePitchTargetDeg = piLocal.pitch_target_deg;
+      activeYawRateDps = piLocal.yaw_rate_dps;
+      activeThrottleUs = piLocal.throttle_us;
     }
 
     static uint32_t activePrintCounter = 0;
@@ -537,7 +566,7 @@ void controlTask(void* pvParameters) {
 
       Serial.printf(
         "LOG: ACTIVE,%s,%.2f,%.2f,%.2f,%d\n",
-        gControlMode == ControlMode::MANUAL ? "MANUAL" : "PI_ASSISTED",
+        controlModeLocal == ControlMode::MANUAL ? "MANUAL" : "PI_ASSISTED",
         activeRollTargetDeg,
         activePitchTargetDeg,
         activeYawRateDps,
@@ -549,7 +578,9 @@ void controlTask(void* pvParameters) {
       Serial.println("PI_TIMEOUT");
 
       if(gControlMode == ControlMode::PI_ASSISTED) {
+        portENTER_CRITICAL(&controlMux);
         gControlMode = ControlMode::MANUAL;
+        portEXIT_CRITICAL(&controlMux);
         Serial.println("LOG: MODE - MANUAL");
       }
     }
