@@ -5,7 +5,7 @@
 
 // IMU Signal Pins
 constexpr uint8_t IMU_data = 21;
-constexpr uint8_t IMU_clk  = 22;
+constexpr uint8_t IMU_clk = 22;
 
 // PWM Motor Control Pins
 const int ESC_RL = 16;
@@ -25,25 +25,25 @@ constexpr int MAX_US = 2000;
 constexpr int IDLE_US = 1500;
 constexpr int HOVER_US = 1590;
 
-constexpr int MAX_ROLL_DEG  = 35;
+constexpr int MAX_ROLL_DEG = 35;
 constexpr int MAX_PITCH_DEG = 35;
 
-constexpr float YAW_GAIN_US = 220.0f;
+constexpr float MAX_YAW_RATE_DPS = 90.0f;
 constexpr int STICK_DEADBAND = 30;
 
 // Angle-hold gains
-constexpr float KP_ROLL  = 110.0f;
+constexpr float KP_ROLL = 110.0f;
 constexpr float KP_PITCH = 110.0f;
+constexpr float KP_YAW_RATE = 2.5f;
 
 // Small integral term to cancel steady hover bias
-constexpr float KI_ROLL  = 18.0f;
+constexpr float KI_ROLL = 18.0f;
 constexpr float KI_PITCH = 18.0f;
 constexpr float ITERM_MAX_US = 120.0f;
 
 // Gyro damping gains (deg/s -> us)
-constexpr float KD_ROLL_RATE  = 1.8f;
+constexpr float KD_ROLL_RATE = 1.8f;
 constexpr float KD_PITCH_RATE = 1.8f;
-constexpr float KD_YAW_RATE   = 7.0f;
 
 // Complementary filter settings
 constexpr float COMPLEMENTARY_ALPHA = 0.98f;
@@ -188,9 +188,9 @@ LevelOut levelFromSensors(const AttitudeEstimate& attitude,
                           int base_us,
                           float Kp_roll, float Kp_pitch,
                           float Ki_roll, float Ki_pitch,
-                          float Kd_roll_rate, float Kd_pitch_rate, float Kd_yaw_rate,
+                          float Kd_roll_rate, float Kd_pitch_rate,
                           float roll_target_deg, float pitch_target_deg,
-                          float yaw_norm, float yaw_gain_us,
+                          float yaw_target_dps,
                           int out_us[4]) {
 
   float roll_target  = (roll_target_deg + ROLL_TRIM_DEG) * (M_PI / 180.0f);
@@ -214,9 +214,9 @@ LevelOut levelFromSensors(const AttitudeEstimate& attitude,
     gPitchIntegralUs *= 0.98f;
   }
 
-  float rollCmd  = (-Kp_roll * roll_err) + gRollIntegralUs - (Kd_roll_rate * gx_dps);
+  float rollCmd = (-Kp_roll * roll_err) + gRollIntegralUs - (Kd_roll_rate * gx_dps);
   float pitchCmd = (Kp_pitch * pitch_err) + gPitchIntegralUs - (Kd_pitch_rate * gy_dps);
-  float yawCmd   = (yaw_norm * yaw_gain_us) - (Kd_yaw_rate * gz_dps);
+  float yawCmd = KP_YAW_RATE * (yaw_target_dps - gz_dps);
 
   // X quad mixer
   float fr = base_us + pitchCmd - rollCmd - yawCmd;
@@ -281,7 +281,7 @@ static void handleSerialCommands() {
           gPiCmd.sequence = sequence;
           gPiCmd.roll_target_deg = clampf(roll, -MAX_ROLL_DEG, MAX_ROLL_DEG);
           gPiCmd.pitch_target_deg = clampf(pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG);
-          gPiCmd.yaw_rate_dps = yawRate;
+          gPiCmd.yaw_rate_dps = clampf(yawRate, -MAX_YAW_RATE_DPS, MAX_YAW_RATE_DPS);
 
           if(throttle < MIN_US) {
             throttle = MIN_US;
@@ -518,12 +518,13 @@ void controlTask(void* pvParameters) {
 
     float activeRollTargetDeg = rcLocal.roll_target_deg;
     float activePitchTargetDeg = rcLocal.pitch_target_deg;
-    float activeYawCommand = rcLocal.yaw;
+    float activeYawRateDps = rcLocal.yaw * MAX_YAW_RATE_DPS;
     int activeThrottleUs = rcLocal.throttle_us;
 
     if(gControlMode == ControlMode::PI_ASSISTED && piCmdValid) {
       activeRollTargetDeg = gPiCmd.roll_target_deg;
       activePitchTargetDeg = gPiCmd.pitch_target_deg;
+      activeYawRateDps = gPiCmd.yaw_rate_dps;
       activeThrottleUs = gPiCmd.throttle_us;
     }
 
@@ -539,7 +540,7 @@ void controlTask(void* pvParameters) {
         gControlMode == ControlMode::MANUAL ? "MANUAL" : "PI_ASSISTED",
         activeRollTargetDeg,
         activePitchTargetDeg,
-        activeYawCommand,
+        activeYawRateDps,
         activeThrottleUs
       );
     }
@@ -607,9 +608,9 @@ void controlTask(void* pvParameters) {
       base_us,
       KP_ROLL, KP_PITCH,
       KI_ROLL, KI_PITCH,
-      KD_ROLL_RATE, KD_PITCH_RATE, KD_YAW_RATE,
+      KD_ROLL_RATE, KD_PITCH_RATE,
       activeRollTargetDeg, activePitchTargetDeg,
-      activeYawCommand, YAW_GAIN_US,
+      activeYawRateDps,
       cmd_us
     );
 
