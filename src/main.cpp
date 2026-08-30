@@ -470,7 +470,7 @@ static inline void rcUpdate() {
         gControlMode = ControlMode::PI_ASSISTED;
         Serial.println("MODE: PI_ASSISTED");
       } else {
-        Serial.printLn("MODE REJECTED: PI_COMMAND_STALE");
+        Serial.println("MODE REJECTED: PI_COMMAND_STALE");
       }
     } else {
       gControlMode = ControlMode::MANUAL;
