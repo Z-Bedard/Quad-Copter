@@ -454,9 +454,9 @@ static inline void rcUpdate() {
   int rx = applyDeadband(gCtl->axisRX(), STICK_DEADBAND);
   int ry = applyDeadband(gCtl->axisRY(), STICK_DEADBAND);
 
-  newRc.throttle_us      = throttleUsFromLeftY(ly);
-  newRc.yaw              = stickNorm(lx);
-  newRc.roll_target_deg  = -stickToTargetDeg(rx, MAX_ROLL_DEG);
+  newRc.throttle_us = throttleUsFromLeftY(ly);
+  newRc.yaw = stickNorm(lx);
+  newRc.roll_target_deg = -stickToTargetDeg(rx, MAX_ROLL_DEG);
   newRc.pitch_target_deg = stickToTargetDeg(ry, MAX_PITCH_DEG);
 
   uint16_t btn = gCtl->buttons();
@@ -482,6 +482,12 @@ static inline void rcUpdate() {
   }
 
   if(modeSwitchReq && !modeWasSwitched) {
+    ControlMode currentMode;
+
+    portENTER_CRITICAL(&controlMux);
+    currentMode = gControlMode;
+    portEXIT_CRITICAL(%controlMux);
+
     if(gControlMode == ControlMode::MANUAL) {
       if(isPiCmdValid()) {
         portENTER_CRITICAL(&controlMux);
@@ -577,7 +583,7 @@ void controlTask(void* pvParameters) {
     if(wasPiCmdValid && !piCmdValid) {
       Serial.println("PI_TIMEOUT");
 
-      if(gControlMode == ControlMode::PI_ASSISTED) {
+      if(controlModeLocal== ControlMode::PI_ASSISTED) {
         portENTER_CRITICAL(&controlMux);
         gControlMode = ControlMode::MANUAL;
         portEXIT_CRITICAL(&controlMux);
