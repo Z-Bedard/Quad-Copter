@@ -524,7 +524,7 @@ void controlTask(void* pvParameters) {
       activePrintCounter = 0;
 
       Serial.printf(
-        "ACTIVE,%s,%.2f,%.2f,%.2f,%d\n",
+        "LOG: ACTIVE,%s,%.2f,%.2f,%.2f,%d\n",
         gControlMode == ControlMode::MANUAL ? "MANUAL" : "PI_ASSISTED",
         activeRollTargetDeg,
         activePitchTargetDeg,

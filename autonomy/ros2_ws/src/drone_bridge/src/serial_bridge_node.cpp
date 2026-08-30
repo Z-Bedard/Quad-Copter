@@ -112,7 +112,7 @@ class SerialBridge : public rclcpp::Node {
                     if(!line.empty() && line.back() == '\r') {
                         line.pop_back();
                     }
-                    if(line.rfind("ACK,", 0) == 0 || line.rfind("RXRAW,", 0) == 0 || line == "PI_TIMEOUT"){
+                    if(line.rfind("ACK,", 0) == 0 || line.rfind("RXRAW,", 0) == 0 || line.rfind("LOG", 0) == 0 || line == "PI_TIMEOUT"){
                         RCLCPP_INFO(this->get_logger(), "Serial RX: %s", line.c_str());
                     }
                     parse_telemetry(line);
