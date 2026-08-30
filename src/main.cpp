@@ -486,7 +486,7 @@ static inline void rcUpdate() {
 
     portENTER_CRITICAL(&controlMux);
     currentMode = gControlMode;
-    portEXIT_CRITICAL(%controlMux);
+    portEXIT_CRITICAL(&controlMux);
 
     if(gControlMode == ControlMode::MANUAL) {
       if(isPiCmdValid()) {
