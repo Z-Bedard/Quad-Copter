@@ -487,7 +487,7 @@ void controlTask(void* pvParameters) {
     bool piCmdValid = isPiCmdValid();
 
     if(wasPiCmdValid && !piCmdValid) {
-      Serial.printLn("PI_TIMEOUT");
+      Serial.println("PI_TIMEOUT");
     }
 
     wasPiCmdValid = piCmdValid;
