@@ -443,6 +443,8 @@ static inline void rcUpdate() {
   newRc.pitch_target_deg = stickToTargetDeg(ry, MAX_PITCH_DEG);
 
   uint16_t btn = gCtl->buttons();
+  bool modeWasSwitched = false;
+  bool modeSwitchReq = (btn & 0x0008) != 0;
 
   if (btn & 0x0001) {   // Cross = disarm
     newRc.armed = false;
@@ -461,6 +463,22 @@ static inline void rcUpdate() {
     portEXIT_CRITICAL(&rcMux);
     return;
   }
+
+  if(modeSwitchReq && !modeWasSwitched) {
+    if(gControlMode == ControlMode::MANUAL) {
+      if(isPiCmdValid()) {
+        gControlMode = ControlMode::PI_ASSISTED;
+        Serial.println("MODE: PI_ASSISTED");
+      } else {
+        Serial.printLn("MODE REJECTED: PI_COMMAND_STALE");
+      }
+    } else {
+      gControlMode = ControlMode::MANUAL;
+      Serial.println("MODE: MANUAL");
+    }
+  }
+
+  modeWasSwitched = modeSwitchReq;
 
   portENTER_CRITICAL(&rcMux);
   gRc = newRc;
