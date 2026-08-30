@@ -468,13 +468,13 @@ static inline void rcUpdate() {
     if(gControlMode == ControlMode::MANUAL) {
       if(isPiCmdValid()) {
         gControlMode = ControlMode::PI_ASSISTED;
-        Serial.println("MODE: PI_ASSISTED");
+        Serial.println("LOG: MODE - PI_ASSISTED");
       } else {
-        Serial.println("MODE REJECTED: PI_COMMAND_STALE");
+        Serial.println("LOG: MODE REJECTED - PI_COMMAND_STALE");
       }
     } else {
       gControlMode = ControlMode::MANUAL;
-      Serial.println("MODE: MANUAL");
+      Serial.println("LOG: MODE - MANUAL");
     }
   }
 
