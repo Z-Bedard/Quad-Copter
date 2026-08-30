@@ -527,13 +527,6 @@ void controlTask(void* pvParameters) {
       activeThrottleUs = gPiCmd.throttle_us;
     }
 
-    if(gControlMode == ControlMode::PI_ASSISTED && !piCmdValid) {
-      activeRollTargetDeg = 0.0f;
-      activePitchTargetDeg = 0.0f;
-      activeYawCommand = 0.0f;
-      activeThrottleUs = rcLocal.throttle_us;
-    }
-
     static uint32_t activePrintCounter = 0;
 
     activePrintCounter++;
@@ -553,6 +546,11 @@ void controlTask(void* pvParameters) {
 
     if(wasPiCmdValid && !piCmdValid) {
       Serial.println("PI_TIMEOUT");
+
+      if(gControlMode == ControlMode::PI_ASSISTED) {
+        gControlMode = ControlMode::MANUAL;
+        Serial.println("LOG: MODE - MANUAL");
+      }
     }
 
     wasPiCmdValid = piCmdValid;
