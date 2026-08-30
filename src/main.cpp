@@ -61,6 +61,10 @@ constexpr float PITCH_TRIM_DEG = 0.0f;
 
 // Autonomous Control
 constexpr uint32_t PI_CMD_TIMEOUT_MS = 300;
+enum class ControlMode : uint8_t {
+  MANUAL,
+  PI_ASSISTED
+};
 
 // Shared state protection
 portMUX_TYPE rcMux = portMUX_INITIALIZER_UNLOCKED;
@@ -73,6 +77,7 @@ BMI270 imu;
 static ControllerPtr gControllers[BP32_MAX_GAMEPADS] = { nullptr };
 static ControllerPtr gCtl = nullptr;
 static bool gJustArmed = false;
+static ControlMode gControlMode = ControlMode::MANUAL;
 
 struct RcCmd {
   int throttle_us;          // 1000..2000
@@ -486,19 +491,53 @@ void controlTask(void* pvParameters) {
     static bool wasPiCmdValid = false;
     bool piCmdValid = isPiCmdValid();
 
-    if(wasPiCmdValid && !piCmdValid) {
-      Serial.println("PI_TIMEOUT");
-    }
-
-    wasPiCmdValid = piCmdValid;
-
     RcCmd rcLocal;
-
     portENTER_CRITICAL(&rcMux);
     rcLocal = gRc;
 
     if (gJustArmed) gJustArmed = false;
     portEXIT_CRITICAL(&rcMux);
+
+    float activeRollTargetDeg = rcLocal.roll_target_deg;
+    float activePitchTargetDeg = rcLocal.pitch_target_deg;
+    float activeYawCommand = rcLocal.yaw;
+    int activeThrottleUs = rcLocal.throttle_us;
+
+    if(gControlMode == ControlMode::PI_ASSISTED && piCmdValid) {
+      activeRollTargetDeg = gPiCmd.roll_target_deg;
+      activePitchTargetDeg = gPiCmd.pitch_target_deg;
+      activeThrottleUs = gPiCmd.throttle_us;
+    }
+
+    if(gControlMode == ControlMode::PI_ASSISTED && !piCmdValid) {
+      activeRollTargetDeg = 0.0f;
+      activePitchTargetDeg = 0.0f;
+      activeYawCommand = 0.0f;
+      activeThrottleUs = rcLocal.throttle_us;
+    }
+
+    static uint32_t activePrintCounter = 0;
+
+    activePrintCounter++;
+
+    if (activePrintCounter >= 25) {
+      activePrintCounter = 0;
+
+      Serial.printf(
+        "ACTIVE,%s,%.2f,%.2f,%.2f,%d\n",
+        gControlMode == ControlMode::MANUAL ? "MANUAL" : "PI_ASSISTED",
+        activeRollTargetDeg,
+        activePitchTargetDeg,
+        activeYawCommand,
+        activeThrottleUs
+      );
+    }
+
+    if(wasPiCmdValid && !piCmdValid) {
+      Serial.println("PI_TIMEOUT");
+    }
+
+    wasPiCmdValid = piCmdValid;
 
     imu.getSensorData();
     uint32_t nowMicros = micros();
@@ -542,7 +581,7 @@ void controlTask(void* pvParameters) {
     int cmd_us[4];
 
     // Enforce continuous armed idle floor
-    int base_us = rcLocal.throttle_us;
+    int base_us = activeThrottleUs;
     if (base_us < MIN_US_IN_FLIGHT) base_us = MIN_US_IN_FLIGHT;
 
     LevelOut ang = levelFromSensors(
@@ -553,8 +592,8 @@ void controlTask(void* pvParameters) {
       KP_ROLL, KP_PITCH,
       KI_ROLL, KI_PITCH,
       KD_ROLL_RATE, KD_PITCH_RATE, KD_YAW_RATE,
-      rcLocal.roll_target_deg, rcLocal.pitch_target_deg,
-      rcLocal.yaw, YAW_GAIN_US,
+      activeRollTargetDeg, activePitchTargetDeg,
+      activeYawCommand, YAW_GAIN_US,
       cmd_us
     );
 
