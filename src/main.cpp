@@ -59,6 +59,9 @@ constexpr int GYRO_CAL_DELAY_MS = 2;
 constexpr float ROLL_TRIM_DEG = 0.0f;
 constexpr float PITCH_TRIM_DEG = 0.0f;
 
+// Autonomous Control
+constexpr uint32_t PI_CMD_TIMEOUT_MS = 300;
+
 // Shared state protection
 portMUX_TYPE rcMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -303,6 +306,22 @@ static void handleSerialCommands() {
     }
   }
 }
+
+static bool isPiCmdValid() {
+  if(!gPiCmd.valid) {
+    return false;
+  }
+
+  uint32_t age_ms = millis() - gPiCmd.last_update_ms;
+
+  if(age_ms > PI_CMD_TIMEOUT_MS) {
+    gPiCmd.valid = false;
+    return false;
+  }
+
+  return true;
+}
+
 void onConnectedController(ControllerPtr ctl) {
   for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
     if (gControllers[i] == nullptr) {
@@ -464,6 +483,15 @@ void controlTask(void* pvParameters) {
 
   while (true) {
     handleSerialCommands();
+    static bool wasPiCmdValid = false;
+    bool piCmdValid = isPiCmdValid();
+
+    if(wasPiCmdValid && !piCmdValid) {
+      Serial.printLn("PI_TIMEOUT");
+    }
+
+    wasPiCmdValid = piCmdValid;
+
     RcCmd rcLocal;
 
     portENTER_CRITICAL(&rcMux);
