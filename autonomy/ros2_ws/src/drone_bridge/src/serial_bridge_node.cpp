@@ -44,7 +44,7 @@ class SerialBridge : public rclcpp::Node {
             double command_roll_deg_ = 0.0;
             double command_pitch_deg_ = 0.0;
             double command_yaw_rate_dps_ = 0.0;
-            int command_throttle_us_ = 1000;
+            int command_throttle_us_ = 1595;
 
             uint32_t command_sequence_ = 0;
 
