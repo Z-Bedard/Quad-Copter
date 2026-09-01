@@ -227,17 +227,6 @@ LevelOut levelFromSensors(const AttitudeEstimate& attitude,
   float pitchCmd = (Kp_pitch * pitch_err) + gPitchIntegralUs - (Kd_pitch_rate * gy_dps);
   float yawCmd = KP_YAW_RATE * (yaw_target_dps - gz_dps);
 
-  PiSerial.printf(
-      "LOG: CTRL,R=%.2f,P=%.2f,RT=%.2f,PT=%.2f,RC=%.2f,PC=%.2f,BASE=%d\n",
-      attitude.roll_rad * RAD_TO_DEG,
-      attitude.pitch_rad * RAD_TO_DEG,
-      roll_target_deg,
-      pitch_target_deg,
-      rollCmd,
-      pitchCmd,
-      base_us
-  );
-
   // X quad mixer
   float fr = base_us + pitchCmd - rollCmd - yawCmd;
   float fl = base_us + pitchCmd + rollCmd + yawCmd;
