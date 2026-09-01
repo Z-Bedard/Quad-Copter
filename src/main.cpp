@@ -670,7 +670,7 @@ void controlTask(void* pvParameters) {
     if (++motorPrintCounter >= 25) {
       motorPrintCounter = 0;
 
-      Serial.printf(
+      PiSerial.printf(
         "MOTORS,FR=%d,FL=%d,RR=%d,RL=%d\n",
         cmd_us[FR],
         cmd_us[FL],

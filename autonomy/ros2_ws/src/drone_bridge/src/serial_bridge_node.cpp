@@ -93,7 +93,7 @@ class SerialBridge : public rclcpp::Node {
                 }
 
                 tcflush(serial_fd_, TCIFLUSH);
-                RCLCPP_INFO(this->get_logger(), "Connected to ESP32 on /dev/ttyUSB0 at 115200 baud");
+                RCLCPP_INFO(this->get_logger(), "Connected to ESP32 on /dev/ttyAMA0 at 115200 baud");
             }
 
             void read_serial(){
