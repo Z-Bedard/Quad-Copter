@@ -228,7 +228,7 @@ LevelOut levelFromSensors(const AttitudeEstimate& attitude,
   float yawCmd = KP_YAW_RATE * (yaw_target_dps - gz_dps);
 
   PiSerial.printf(
-      "CTRL,R=%.2f,P=%.2f,RT=%.2f,PT=%.2f,RC=%.2f,PC=%.2f,BASE=%d\n",
+      "LOG: CTRL,R=%.2f,P=%.2f,RT=%.2f,PT=%.2f,RC=%.2f,PC=%.2f,BASE=%d\n",
       attitude.roll_rad * RAD_TO_DEG,
       attitude.pitch_rad * RAD_TO_DEG,
       roll_target_deg,
