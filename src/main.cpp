@@ -665,6 +665,20 @@ void controlTask(void* pvParameters) {
       setThrottleUs((Motor)m, cmd_us[m]);
     }
 
+    static uint32_t motorPrintCounter = 0;
+
+    if (++motorPrintCounter >= 25) {
+      motorPrintCounter = 0;
+
+      Serial.printf(
+        "MOTORS,FR=%d,FL=%d,RR=%d,RL=%d\n",
+        cmd_us[FR],
+        cmd_us[FL],
+        cmd_us[RR],
+        cmd_us[RL]
+      );
+    }
+
     gDbgRoll = ang.roll_rad;
     gDbgPitch = ang.pitch_rad;
     for (int i = 0; i < 4; i++) {
