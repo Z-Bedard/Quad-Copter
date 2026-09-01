@@ -7,6 +7,10 @@
 constexpr uint8_t IMU_data = 21;
 constexpr uint8_t IMU_clk = 22;
 
+HardwareSerial PiSerial(2);
+constexpr uint8_t PI_RX_PIN = 25;
+constexpr uint8_t PI_TX_PIN = 26;
+
 // PWM Motor Control Pins
 const int ESC_RL = 16;
 const int ESC_FR = 17;
@@ -27,9 +31,13 @@ constexpr int HOVER_US = 1590;
 
 constexpr int MAX_ROLL_DEG = 35;
 constexpr int MAX_PITCH_DEG = 35;
-
 constexpr float MAX_YAW_RATE_DPS = 90.0f;
 constexpr int STICK_DEADBAND = 30;
+
+// Autonomous Limits (AUTOP)
+constexpr float MAX_ROLL_DEG_AUTOP = 5.0f;
+constexpr float MAX_PITCH_DEG_AUTOP = 5.0f;
+constexpr float MAX_YAW_RATE_DPS_AUTOP = 30.0f;
 
 // Angle-hold gains
 constexpr float KP_ROLL = 110.0f;
@@ -237,7 +245,7 @@ static void sendTelemetry(const AttitudeEstimate& attitude, float gx_dps, float 
   float roll_deg = attitude.roll_rad * RAD_TO_DEG;
   float pitch_deg = attitude.pitch_rad * RAD_TO_DEG;
 
-  Serial.printf(
+  PiSerial.printf(
     "TEL,%.3f,%.3f,%.3f,%.3f,%.3f,%d,%d,%d,%.3f,%.3f,%.3f\n",
     roll_deg,
     pitch_deg,
@@ -256,8 +264,8 @@ static void sendTelemetry(const AttitudeEstimate& attitude, float gx_dps, float 
 static void handleSerialCommands() {
   static String line;
 
-  while(Serial.available() > 0) {
-    char c = Serial.read();
+  while(PiSerial.available() > 0) {
+    char c = PiSerial.read();
 
     if(c == '\n') {
       Serial.printf("RXRAW,%s\n", line.c_str());
@@ -279,9 +287,9 @@ static void handleSerialCommands() {
         );
 
         if (parsed == 5) {
-          float clampedRoll = clampf(roll, -MAX_ROLL_DEG, MAX_ROLL_DEG);
-          float clampedPitch = clampf(pitch, -MAX_PITCH_DEG, MAX_PITCH_DEG);
-          float clampedYawRate = clampf(yawRate, -MAX_YAW_RATE_DPS, MAX_YAW_RATE_DPS);
+          float clampedRoll = clampf(roll, -MAX_ROLL_DEG_AUTOP, MAX_ROLL_DEG_AUTOP);
+          float clampedPitch = clampf(pitch, -MAX_PITCH_DEG_AUTOP, MAX_PITCH_DEG_AUTOP);
+          float clampedYawRate = clampf(yawRate, -MAX_YAW_RATE_DPS_AUTOP, MAX_YAW_RATE_DPS_AUTOP);
 
           if(throttle < MIN_US) {
             throttle = MIN_US;
@@ -302,7 +310,7 @@ static void handleSerialCommands() {
 
           portEXIT_CRITICAL(&controlMux);
 
-          Serial.printf(
+          PiSerial.printf(
             "ACK,%lu,%.2f,%.2f,%.2f,%d\n",
             sequence,
             gPiCmd.roll_target_deg,
@@ -488,7 +496,7 @@ static inline void rcUpdate() {
     currentMode = gControlMode;
     portEXIT_CRITICAL(&controlMux);
 
-    if(gControlMode == ControlMode::MANUAL) {
+    if(currentMode == ControlMode::MANUAL) {
       if(isPiCmdValid()) {
         portENTER_CRITICAL(&controlMux);
         gControlMode = ControlMode::PI_ASSISTED;
@@ -669,6 +677,8 @@ void controlTask(void* pvParameters) {
 
 void setup() {
   Serial.begin(115200);
+
+  PiSerial.begin(115200, SERIAL_8N1, PI_RX_PIN, PI_TX_PIN);
 
   rcInit();
 
