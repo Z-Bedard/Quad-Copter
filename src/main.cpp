@@ -567,8 +567,12 @@ void controlTask(void* pvParameters) {
     if(controlModeLocal == ControlMode::PI_ASSISTED && piCmdValid) {
       activeRollTargetDeg = piLocal.roll_target_deg;
       activePitchTargetDeg = piLocal.pitch_target_deg;
-      activeYawRateDps = piLocal.yaw_rate_dps;
-      activeThrottleUs = piLocal.throttle_us;
+
+      // Keep under pilot for first test
+      activeYawRateDps = rcLocal.yaw * MAX_YAW_RATE_DPS;
+      activeThrottleUs = rcLocal.throttle_us;
+      // activeYawRateDps = piLocal.yaw_rate_dps;
+      // activeThrottleUs = piLocal.throttle_us;
     }
 
     static uint32_t activePrintCounter = 0;
@@ -684,6 +688,17 @@ void controlTask(void* pvParameters) {
     for (int i = 0; i < 4; i++) {
       gDbgCmd[i] = cmd_us[i];
     }
+
+    PiSerial.printf(
+        "CTRL,R=%.2f,P=%.2f,RT=%.2f,PT=%.2f,RC=%.2f,PC=%.2f,BASE=%d\n",
+        attitude.roll_rad * RAD_TO_DEG,
+        attitude.pitch_rad * RAD_TO_DEG,
+        roll_target_deg,
+        pitch_target_deg,
+        rollCmd,
+        pitchCmd,
+        base_us
+    );
 
     vTaskDelayUntil(&lastWake, period);
   }
