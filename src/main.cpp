@@ -671,7 +671,7 @@ void controlTask(void* pvParameters) {
       motorPrintCounter = 0;
 
       PiSerial.printf(
-        "MOTORS,FR=%d,FL=%d,RR=%d,RL=%d\n",
+        "LOG: MOTORS,FR=%d,FL=%d,RR=%d,RL=%d\n",
         cmd_us[FR],
         cmd_us[FL],
         cmd_us[RR],
