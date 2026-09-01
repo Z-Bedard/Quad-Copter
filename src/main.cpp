@@ -679,6 +679,7 @@ void setup() {
   Serial.begin(115200);
 
   PiSerial.begin(115200, SERIAL_8N1, PI_RX_PIN, PI_TX_PIN);
+  PiSerial.println("PI_UART_TEST");
 
   rcInit();
 
@@ -722,5 +723,6 @@ void setup() {
 }
 
 void loop() {
+  PiSerial.println("PI_UART_TEST");
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

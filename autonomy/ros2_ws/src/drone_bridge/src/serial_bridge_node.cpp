@@ -49,7 +49,7 @@ class SerialBridge : public rclcpp::Node {
             uint32_t command_sequence_ = 0;
 
             void open_serial_port() {
-                serial_fd_ = open("/dev/ttyUSB0", O_RDWR | O_NOCTTY | O_NONBLOCK);
+                serial_fd_ = open("/dev/ttyAMA0", O_RDWR | O_NOCTTY | O_NONBLOCK);
                 if(serial_fd_ < 0) {
                     RCLCPP_FATAL(this->get_logger(), "Failed to open /dev/ttyUSB0: %s", std::strerror(errno));
                     throw std::runtime_error("Could not open serial port");
